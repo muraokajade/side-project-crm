@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Project, ProjectFormData } from './types/project';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Project, ProjectFormData, ApiValidationErrors } from './types/project';
 import { STATUS_OPTIONS, MEDIA_OPTIONS, STATUS_COLORS } from './constants/projectOptions';
 import ProjectModal from './ProjectModal';
 
@@ -10,6 +10,13 @@ function AppRoot() {
   const [mediaFilter, setMediaFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modalErrors, setModalErrors] = useState<Record<string, string[]> | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  // isSubmitting/deletingId (state) はボタンのdisabled表示用。
+  // 以下のrefは、Reactのstate反映(再レンダリング)を待たずに二重送信を同期的に拒否するためのガード。
+  const isSubmittingRef = useRef(false);
+  const deletingIdsRef = useRef<Set<number>>(new Set());
 
   const fetchProjects = async () => {
     const params = new URLSearchParams();
@@ -41,6 +48,9 @@ function AppRoot() {
   const today = new Date().toISOString().slice(0, 10);
 
   const handleCreate = async (data: ProjectFormData) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
     const body: Record<string, unknown> = { ...data };
     if (data.reward) body.reward = Number(data.reward);
     else delete body.reward;
@@ -50,17 +60,36 @@ function AppRoot() {
     else delete body.recruitment_count;
     Object.keys(body).forEach(k => { if (body[k] === '') delete body[k]; });
 
-    await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    setModalOpen(false);
-    fetchProjects();
+    setIsSubmitting(true);
+    setModalErrors(undefined);
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 201) {
+        setModalOpen(false);
+        await fetchProjects();
+      } else if (res.status === 422) {
+        const json: ApiValidationErrors = await res.json();
+        setModalErrors(json.errors);
+      } else {
+        window.alert('保存に失敗しました。もう一度お試しください。');
+      }
+    } catch {
+      window.alert('通信に失敗しました。ネットワーク状態を確認してください。');
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const handleUpdate = async (data: ProjectFormData) => {
     if (!editingProject) return;
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
     const body: Record<string, unknown> = { ...data };
     if (data.reward) body.reward = Number(data.reward);
     else body.reward = null;
@@ -72,20 +101,52 @@ function AppRoot() {
     body.name = data.name;
     body.status = data.status;
 
-    await fetch(`/api/projects/${editingProject.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    setModalOpen(false);
-    setEditingProject(null);
-    fetchProjects();
+    setIsSubmitting(true);
+    setModalErrors(undefined);
+    try {
+      const res = await fetch(`/api/projects/${editingProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 200) {
+        setModalOpen(false);
+        setEditingProject(null);
+        await fetchProjects();
+      } else if (res.status === 422) {
+        const json: ApiValidationErrors = await res.json();
+        setModalErrors(json.errors);
+      } else {
+        window.alert('保存に失敗しました。もう一度お試しください。');
+      }
+    } catch {
+      window.alert('通信に失敗しました。ネットワーク状態を確認してください。');
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
+    // window.confirm()自体が同期的にブロックするため単独でも同一idの多重実行は起きないが、
+    // confirm()をモックする（テスト等）環境も想定し、refで同期的に二重削除を防ぐ。
+    if (deletingIdsRef.current.has(id)) return;
     if (!window.confirm('この案件を削除しますか？')) return;
-    await fetch(`/api/projects/${id}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
-    fetchProjects();
+    deletingIdsRef.current.add(id);
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
+      if (res.status === 204) {
+        await fetchProjects();
+      } else {
+        window.alert('削除に失敗しました。もう一度お試しください。');
+      }
+    } catch {
+      window.alert('通信に失敗しました。ネットワーク状態を確認してください。');
+    } finally {
+      deletingIdsRef.current.delete(id);
+      setDeletingId(null);
+    }
   };
 
   const formatReward = (reward: number | null) => {
@@ -93,8 +154,8 @@ function AppRoot() {
     return `¥${reward.toLocaleString()}`;
   };
 
-  const openCreate = () => { setEditingProject(null); setModalOpen(true); };
-  const openEdit = (p: Project) => { setEditingProject(p); setModalOpen(true); };
+  const openCreate = () => { setEditingProject(null); setModalErrors(undefined); setModalOpen(true); };
+  const openEdit = (p: Project) => { setEditingProject(p); setModalErrors(undefined); setModalOpen(true); };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -179,38 +240,40 @@ function AppRoot() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium">案件名</th>
-                  <th className="text-left px-4 py-3 font-medium">媒体</th>
-                  <th className="text-left px-4 py-3 font-medium">カテゴリ</th>
-                  <th className="text-left px-4 py-3 font-medium">ステータス</th>
-                  <th className="text-left px-4 py-3 font-medium">報酬</th>
-                  <th className="text-left px-4 py-3 font-medium">次アクション</th>
-                  <th className="text-left px-4 py-3 font-medium">予定日</th>
-                  <th className="text-left px-4 py-3 font-medium">優先度</th>
-                  <th className="text-left px-4 py-3 font-medium">操作</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">案件名</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">媒体</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">カテゴリ</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">ステータス</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">報酬</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">次アクション</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">予定日</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">優先度</th>
+                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {projects.map(p => (
                   <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800">{p.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{p.media || '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{p.category || '-'}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{p.name}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.media || '-'}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.category || '-'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`px-2 py-0.5 rounded text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
                         {p.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{formatReward(p.reward)}</td>
-                    <td className="px-4 py-3 text-slate-600">{p.next_action || '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{p.next_action_date?.slice(0, 10) || '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{p.priority || '-'}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatReward(p.reward)}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.next_action || '-'}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.next_action_date?.slice(0, 10) || '-'}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.priority || '-'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-2">
                         <button onClick={() => openEdit(p)}
                           className="text-slate-600 hover:text-slate-800 text-xs underline">編集</button>
-                        <button onClick={() => handleDelete(p.id)}
-                          className="text-red-500 hover:text-red-700 text-xs underline">削除</button>
+                        <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id}
+                          className="text-red-500 hover:text-red-700 text-xs underline disabled:opacity-50 disabled:no-underline">
+                          {deletingId === p.id ? '削除中...' : '削除'}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -228,7 +291,9 @@ function AppRoot() {
         open={modalOpen}
         mode={editingProject ? 'edit' : 'create'}
         project={editingProject}
-        onClose={() => { setModalOpen(false); setEditingProject(null); }}
+        isSubmitting={isSubmitting}
+        errors={modalErrors}
+        onClose={() => { setModalOpen(false); setEditingProject(null); setModalErrors(undefined); }}
         onSubmit={editingProject ? handleUpdate : handleCreate}
       />
     </div>

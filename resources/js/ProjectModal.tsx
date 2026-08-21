@@ -6,6 +6,8 @@ interface ProjectModalProps {
   open: boolean;
   mode: 'create' | 'edit';
   project: Project | null;
+  isSubmitting?: boolean;
+  errors?: Record<string, string[]>;
   onClose: () => void;
   onSubmit: (data: ProjectFormData) => void;
 }
@@ -17,9 +19,11 @@ const emptyForm: ProjectFormData = {
   next_action: '', next_action_date: '', memo: '', priority: '', is_favorite: false,
 };
 
-export default function ProjectModal({ open, mode, project, onClose, onSubmit }: ProjectModalProps) {
+export default function ProjectModal({ open, mode, project, isSubmitting, errors, onClose, onSubmit }: ProjectModalProps) {
   const [form, setForm] = useState<ProjectFormData>(emptyForm);
   const [error, setError] = useState('');
+
+  const fieldError = (name: string) => errors?.[name]?.[0];
 
   useEffect(() => {
     if (mode === 'edit' && project) {
@@ -84,6 +88,7 @@ export default function ProjectModal({ open, mode, project, onClose, onSubmit }:
               <label className="block text-sm font-medium text-slate-700 mb-1">案件名 <span className="text-red-500">*</span></label>
               <input type="text" name="name" value={form.name} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('name') && <p className="text-red-600 text-xs mt-1">{fieldError('name')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">ステータス</label>
@@ -91,6 +96,7 @@ export default function ProjectModal({ open, mode, project, onClose, onSubmit }:
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
                 {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              {fieldError('status') && <p className="text-red-600 text-xs mt-1">{fieldError('status')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">媒体</label>
@@ -99,6 +105,7 @@ export default function ProjectModal({ open, mode, project, onClose, onSubmit }:
                 <option value="">選択なし</option>
                 {MEDIA_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
+              {fieldError('media') && <p className="text-red-600 text-xs mt-1">{fieldError('media')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">カテゴリ</label>
@@ -107,6 +114,7 @@ export default function ProjectModal({ open, mode, project, onClose, onSubmit }:
                 <option value="">選択なし</option>
                 {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+              {fieldError('category') && <p className="text-red-600 text-xs mt-1">{fieldError('category')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">優先度</label>
@@ -115,61 +123,73 @@ export default function ProjectModal({ open, mode, project, onClose, onSubmit }:
                 <option value="">選択なし</option>
                 {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
+              {fieldError('priority') && <p className="text-red-600 text-xs mt-1">{fieldError('priority')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">報酬（円）</label>
               <input type="number" name="reward" value={form.reward} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('reward') && <p className="text-red-600 text-xs mt-1">{fieldError('reward')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">稼働時間</label>
               <input type="text" name="working_hours" value={form.working_hours} onChange={handleChange} placeholder="例: 週10時間"
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('working_hours') && <p className="text-red-600 text-xs mt-1">{fieldError('working_hours')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">クライアント名</label>
               <input type="text" name="client_name" value={form.client_name} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('client_name') && <p className="text-red-600 text-xs mt-1">{fieldError('client_name')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">案件URL</label>
               <input type="url" name="project_url" value={form.project_url} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('project_url') && <p className="text-red-600 text-xs mt-1">{fieldError('project_url')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">応募日</label>
               <input type="date" name="applied_date" value={form.applied_date} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('applied_date') && <p className="text-red-600 text-xs mt-1">{fieldError('applied_date')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">応募人数</label>
               <input type="number" name="applicant_count" value={form.applicant_count} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('applicant_count') && <p className="text-red-600 text-xs mt-1">{fieldError('applicant_count')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">募集人数</label>
               <input type="number" name="recruitment_count" value={form.recruitment_count} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('recruitment_count') && <p className="text-red-600 text-xs mt-1">{fieldError('recruitment_count')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">次アクション</label>
               <input type="text" name="next_action" value={form.next_action} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('next_action') && <p className="text-red-600 text-xs mt-1">{fieldError('next_action')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">次アクション予定日</label>
               <input type="date" name="next_action_date" value={form.next_action_date} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('next_action_date') && <p className="text-red-600 text-xs mt-1">{fieldError('next_action_date')}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">応募文</label>
               <textarea name="application_text" value={form.application_text} onChange={handleChange} rows={3}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('application_text') && <p className="text-red-600 text-xs mt-1">{fieldError('application_text')}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">メモ</label>
               <textarea name="memo" value={form.memo} onChange={handleChange} rows={3}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('memo') && <p className="text-red-600 text-xs mt-1">{fieldError('memo')}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -177,6 +197,7 @@ export default function ProjectModal({ open, mode, project, onClose, onSubmit }:
                   className="rounded border-slate-300" />
                 お気に入り
               </label>
+              {fieldError('is_favorite') && <p className="text-red-600 text-xs mt-1">{fieldError('is_favorite')}</p>}
             </div>
           </div>
 
@@ -185,9 +206,9 @@ export default function ProjectModal({ open, mode, project, onClose, onSubmit }:
               className="px-4 py-2 text-sm text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50">
               キャンセル
             </button>
-            <button type="submit"
-              className="px-4 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700">
-              {mode === 'create' ? '登録' : '更新'}
+            <button type="submit" disabled={isSubmitting}
+              className="px-4 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
+              {isSubmitting ? (mode === 'create' ? '登録中...' : '更新中...') : (mode === 'create' ? '登録' : '更新')}
             </button>
           </div>
         </form>

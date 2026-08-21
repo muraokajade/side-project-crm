@@ -21,6 +21,11 @@ export interface Project {
   updated_at: string;
 }
 
+export interface ApiValidationErrors {
+  message: string;
+  errors: Record<string, string[]>;
+}
+
 export interface ProjectFormData {
   name: string;
   project_url: string;
