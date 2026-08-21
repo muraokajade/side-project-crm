@@ -78,8 +78,8 @@
 - [x] 4. Checkpoint - Backend API complete
     - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Frontend setup (Vite + React + TypeScript + Tailwind)
-    - [ ] 5.1 Install frontend dependencies and configure Vite
+- [x] 5. Frontend setup (Vite + React + TypeScript + Tailwind)
+    - [x] 5.1 Install frontend dependencies and configure Vite
         - `npm install react react-dom @vitejs/plugin-react typescript @types/react @types/react-dom`
         - `npm install -D tailwindcss @tailwindcss/vite`
         - `vite.config.ts` にReactプラグイン + Tailwind CSSプラグイン + Laravel Vite設定を追加
@@ -87,27 +87,30 @@
         - `resources/css/app.css` に `@import "tailwindcss"` を追加
         - _Requirements: 11.6_
 
-    - [ ] 5.2 Create entry point and verify build
+    - [x] 5.2 Create entry point and verify build
         - `resources/js/app.tsx` をエントリーポイントとして作成（ReactDOM.createRoot + App コンポーネントの基本レンダリング）
         - `resources/js/App.tsx` に最小限のコンポーネント（"Side Project Manager" タイトル表示のみ）を作成
         - `resources/views/welcome.blade.php` を編集してVite React アセットを読み込むHTMLに変更
         - `npm run build` でビルド成功を確認
         - _Requirements: 11.1_
+        - **実装との差異**: メインコンポーネントは`App.tsx`ではなく`resources/js/AppRoot.tsx`として実装された（`resources/js/app.tsx`からimportして使用。機能的には同等）。
 
-- [ ] 6. Frontend core implementation
-    - [ ] 6.1 Create TypeScript types
+- [x] 6. Frontend core implementation
+    - [x] 6.1 Create TypeScript types
         - `resources/js/types/project.ts` に `Project` インターフェースと `ProjectFormData` インターフェースを定義
         - 設計書の型定義に従い、全フィールドの型を正確に記述
         - _Requirements: 12.1_
+        - **追加**: 2026-08-21のスタビリティ改善で`ApiValidationErrors`型を追記（422レスポンスの型付け用）。
 
-    - [ ] 6.2 Create constants
+    - [x] 6.2 Create constants
         - `resources/js/constants/projectOptions.ts` に STATUS_OPTIONS, MEDIA_OPTIONS, STATUS_COLORS を定義
         - ステータス12種: 未応募, 応募済み, 返信待ち, 面談予定, 選考中, 契約済み, 作業中, 納品済み, 検収待ち, 完了, 不採用, 辞退
         - 媒体4種: CrowdWorks, MENTA, Lancers, その他
         - カラーマッピング: 設計書のSTATUS_COLORSに従う
         - _Requirements: 4.1, 4.2, 10.2_
+        - **実装との差異**: 設計書にない`CATEGORY_OPTIONS`（案件カテゴリ6種）・`PRIORITY_OPTIONS`（優先度スコア9種）も追加実装されている。要件定義書・design.mdには記載がなく、出所・業務ルールの根拠は本ドキュメント作成時点では未確認。
 
-    - [ ] 6.3 Implement API call functions in App.tsx
+    - [x] 6.3 Implement API call functions in App.tsx
         - `App.tsx` に fetchProjects, handleCreate, handleUpdate, handleDelete 関数を実装
         - fetchProjects: GET /api/projects にkeyword, status, media パラメータ付きでリクエスト
         - handleCreate: POST /api/projects
@@ -116,23 +119,24 @@
         - useEffect で初回マウント時に fetchProjects 呼び出し
         - state管理: projects, keyword, statusFilter, mediaFilter, modalOpen, editingProject
         - _Requirements: 1.5, 2.1, 5.3, 6.1, 6.2_
+        - **2026-08-21追記**: エラーハンドリング・多重送信防止を追加。詳細は本ファイル末尾「11. Local stability hardening」を参照。
 
-- [ ] 7. Frontend UI implementation
-    - [ ] 7.1 Implement Summary Cards section
+- [x] 7. Frontend UI implementation
+    - [x] 7.1 Implement Summary Cards section
         - `App.tsx` 内にサマリーカードセクションを実装
         - useMemo で computeSummary を計算（total, 面談予定, 返信待ち, 契約済み, 完了）
         - カード: 白背景 + ライトシャドウ + 角丸、アクセントカラーはアイコン/数値/上部ボーダーに限定
         - カラー: total=slate, 面談予定=blue, 返信待ち=amber, 契約済み=violet, 完了=green
         - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 11.7, 11.8_
 
-    - [ ] 7.2 Implement Search & Filter section
+    - [x] 7.2 Implement Search & Filter section
         - `App.tsx` 内に検索テキスト入力 + ステータスセレクトボックス + 媒体セレクトボックスを実装
         - 入力変更時に fetchProjects を再呼び出し（検索はAPI側で処理）
         - ステータスセレクト: 全ステータス + 空（全件）選択肢
         - 媒体セレクト: 全媒体 + 空（全件）選択肢
         - _Requirements: 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-    - [ ] 7.3 Implement Next Action section
+    - [x] 7.3 Implement Next Action section
         - `App.tsx` 内に次アクションセクションを実装
         - useMemo で computeNextActions を計算（next_action_date非nullのみ、日付昇順ソート）
         - 各行: 案件名、次アクション内容、次アクション予定日、ステータスバッジ表示
@@ -140,7 +144,7 @@
         - 予定日が未来: 白色背景で通常表示
         - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-    - [ ] 7.4 Implement Project List table
+    - [x] 7.4 Implement Project List table
         - `App.tsx` 内に案件一覧テーブルを実装
         - カラム: 案件名、媒体、カテゴリ、ステータス（Status_Badge）、報酬、次アクション、次アクション予定日、優先度、操作（編集・削除ボタン）
         - ステータスはカラー付きバッジ（STATUS_COLORSに基づくTailwind CSSクラス）
@@ -148,8 +152,9 @@
         - 操作列: 編集ボタン（editingProjectとmodalOpenをセット）、削除ボタン（handleDelete呼び出し）
         - テーブルは白背景 + ライトシャドウ + 角丸
         - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 6.1, 8.1, 8.2, 10.1, 10.2, 10.3, 11.7_
+        - **2026-08-21追記**: モバイル幅（375px）でヘッダー文字が1文字ずつ縦折れする不具合を`whitespace-nowrap`＋横スクロールで修正。詳細は本ファイル末尾「11. Local stability hardening」を参照。
 
-    - [ ] 7.5 Implement ProjectModal component
+    - [x] 7.5 Implement ProjectModal component
         - `resources/js/ProjectModal.tsx` を作成
         - Props: open, mode('create'|'edit'), project, onClose, onSubmit
         - 全フィールドの入力フォーム: 案件名（必須）、案件URL、クライアント名、媒体（セレクト）、カテゴリ、応募日、ステータス（セレクト、デフォルト「未応募」）、報酬、稼働時間、応募人数、募集人数、応募文（textarea）、次アクション、次アクション予定日、メモ（textarea）、優先度、お気に入り（チェックボックス）
@@ -158,38 +163,74 @@
         - 案件名未入力時のフロントバリデーション表示
         - モーダルオーバーレイ + 白背景 + 角丸 + シャドウ
         - _Requirements: 1.2, 1.3, 1.4, 1.6, 5.1, 5.2, 11.7_
+        - **2026-08-21追記**: `isSubmitting`・`errors`（422フィールド別エラー）propsを追加。詳細は本ファイル末尾「11. Local stability hardening」を参照。
 
-    - [ ] 7.6 Wire header and layout
+    - [x] 7.6 Wire header and layout
         - `App.tsx` のレイアウトを完成: ヘッダー（アプリ名「副業案件管理」）→ Summary Cards → Search/Filter → Next Action → Project List → 「案件を登録」ボタン
         - 「案件を登録」ボタンクリックで modalOpen=true, editingProject=null に設定
         - モーダルのonSubmit成功後にfetchProjectsを再呼び出しして全セクション更新
         - 白/slate/gray基調のビジネスデザイン、十分なホワイトスペース
         - _Requirements: 1.1, 1.6, 5.4, 6.3, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.9, 11.10, 11.11_
 
-- [ ] 8. Checkpoint - Frontend implementation complete
+- [x] 8. Checkpoint - Frontend implementation complete
     - Ensure `npm run build` succeeds with no TypeScript errors, ask the user if questions arise.
+    - **確認済み（2026-08-21）**: `npm run build`・`npx tsc --noEmit`とも成功。
 
 - [ ] 9. Integration verification
-    - [ ] 9.1 Final build and test verification
-        - `php artisan test` で全バックエンドテストがパス
-        - `npm run build` でフロントエンドビルド成功
-        - CORS設定確認（Laravel側で `/api/*` へのリクエストを許可）
+    - [x] 9.1 Final build and test verification
+        - `php artisan test` で全バックエンドテストがパス → **確認済み（11 tests / 40 assertions PASS）**
+        - `npm run build` でフロントエンドビルド成功 → **確認済み**
+        - CORS設定確認（Laravel側で `/api/*` へのリクエストを許可） → **`config/cors.php`は存在せずLaravel既定のまま。フロントエンドはVite資産をLaravel自身が同一オリジンで配信するため`/api/*`へのクロスオリジンリクエストは発生せず、本項目のCORS設定変更は不要と判断（明示的なCORS許可設定の追加は行っていない）**
         - _Requirements: 全要件_
 
     - [ ] 9.2 Manual verification checklist
         - 以下の動作を確認するためのチェックリスト:
-            - 案件登録: モーダルから正常に登録でき、一覧・サマリー・次アクションが更新される
-            - 案件一覧: テーブル表示、登録日時降順
-            - 検索: テキスト入力でフィルタリング
-            - 絞り込み: ステータス・媒体セレクトでフィルタリング
-            - 編集: モーダルで全フィールド編集・保存
-            - 削除: window.confirm後に削除、一覧更新
-            - サマリー: 各ステータスのカウント正常
-            - 次アクション: 日付順表示、期限切れ赤背景
+            - 案件登録: モーダルから正常に登録でき、一覧・サマリー・次アクションが更新される → **未確認**（既存データ保護のため実データでの登録操作は実施していない。422/500/通信エラー時の異常系のみブラウザで確認済み）
+            - 案件一覧: テーブル表示、登録日時降順 → **表示自体は確認済み（0件時）。登録日時降順のソート挙動は複数件データでの確認が必要で未実施**
+            - 検索: テキスト入力でフィルタリング → **未確認**（実データでの検証が必要）
+            - 絞り込み: ステータス・媒体セレクトでフィルタリング → **未確認**（実データでの検証が必要）
+            - 編集: モーダルで全フィールド編集・保存 → **未確認**（モーダルの表示自体は確認済み。保存成功パスは実データ作成を伴うため未実施）
+            - 削除: window.confirm後に削除、一覧更新 → **未確認**（確認ダイアログの表示・キャンセル動作は確認済み。実削除は実データ保護のため未実施）
+            - サマリー: 各ステータスのカウント正常 → **集計ロジック（`computeSummary`）は`resources/js/utils/projectSummary.test.ts`で自動テスト済み。画面上での実データによる確認は未実施**
+            - 次アクション: 日付順表示、期限切れ赤背景 → **ソート・フィルタロジック（`computeNextActions`）は自動テスト済み。赤背景表示の実データでの見た目確認は未実施**
         - _Requirements: 1〜12全要件_
+        - **上記のとおり、本チェックリストは自動テスト・異常系の確認に限り実施済みで、実データを用いた正常系の一連の手動確認（登録→一覧反映→編集→削除）は完了していません。次工程で対応が必要です。**
 
 - [ ] 10. Final checkpoint - All verification complete
     - Ensure all tests pass, ask the user if questions arise.
+    - **9.2が未完了のため本チェックポイントも未完了。**
+
+- [x] 11. Local stability hardening（2026-08-21、ブランチ`fix/side-project-crm-local-stability`）
+    - Phase 1完了後に、「個人が安全かつ安定してローカル利用できる完成版」を目的として追加実施した改善。要件定義書・design.mdのPhase 1計画には含まれていなかったが、実装・自動テストで動作確認済みのため完了扱いとする。
+
+    - [x] 11.1 APIエラーハンドリング
+        - `resources/js/AppRoot.tsx`の`handleCreate`/`handleUpdate`/`handleDelete`を`try/catch/finally`化。201/200(200)成功時のみモーダルを閉じ、422時はモーダルを閉じずフィールド別エラーを表示、その他のステータス・通信失敗時は`window.alert`で汎用エラーを表示する
+        - コミット: `23d8245`
+
+    - [x] 11.2 422フィールド別エラー表示
+        - `resources/js/ProjectModal.tsx`に`errors`propsと`fieldError(name)`ヘルパーを追加し、17フィールドすべてに対応するエラー表示を実装
+        - コミット: `23d8245`
+
+    - [x] 11.3 多重送信防止
+        - `isSubmitting`/`deletingId`（state、ボタンのdisabled表示用）に加え、`isSubmittingRef`/`deletingIdsRef`（`useRef`、Reactのstate反映を待たない同期的な二重実行防止）を追加
+        - コミット: `23d8245`
+
+    - [x] 11.4 ローディング表示
+        - 送信中は登録/更新ボタンを「登録中...」/「更新中...」に変更してdisabled化。削除中は対象行の削除ボタンのみ「削除中...」表示でdisabled化
+        - コミット: `23d8245`
+
+    - [x] 11.5 モバイル一覧テーブルのレイアウト修正
+        - 案件一覧テーブルの`<th>`/`<td>`に`whitespace-nowrap`を追加し、既存の`overflow-x-auto`による横スクロールが正しく機能するよう修正（375px幅でヘッダー文字が1文字ずつ縦折れする不具合の解消。カード型レイアウトへの変更は行っていない）
+        - コミット: `23d8245`
+
+    - [x] 11.6 TypeScript型チェック環境の復旧
+        - `node_modules`のネイティブバイナリ欠落（npm既知バグ）を`npm ci`で復旧。`resources/js/vite-env.d.ts`（Vite標準の型宣言ファイル）を新規追加し、CSS副作用importの型エラーを解消
+        - コミット: `23d8245`
+
+    - [x] 11.7 フロントエンドテスト基盤の追加
+        - Vitest 4.1.11 + @testing-library/react 16.3.2 + @testing-library/jest-dom 7.0.1 + jsdom 29.1.1を追加。`resources/js/AppRoot.tsx`のサマリー・次アクション計算を`resources/js/utils/projectSummary.ts`へ純粋関数として切り出し（ロジック無変更）、テストを追加
+        - テスト内容: `computeSummary`/`computeNextActions`の単体テスト6件、`ProjectModal`の422フィールド別エラー表示・`isSubmitting`時のボタン無効化・登録中/更新中表示のテスト9件（計15件、全件PASS）
+        - コミット: `b667a34`
 
 ## Notes
 
