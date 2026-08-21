@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Project, ProjectFormData, ApiValidationErrors } from './types/project';
 import { STATUS_OPTIONS, MEDIA_OPTIONS, STATUS_COLORS } from './constants/projectOptions';
+import { computeSummary, computeNextActions } from './utils/projectSummary';
 import ProjectModal from './ProjectModal';
 
 function AppRoot() {
@@ -30,20 +31,9 @@ function AppRoot() {
 
   useEffect(() => { fetchProjects(); }, [keyword, statusFilter, mediaFilter]);
 
-  const summary = useMemo(() => ({
-    total: projects.length,
-    interview: projects.filter(p => p.status === '面談予定').length,
-    waiting: projects.filter(p => p.status === '返信待ち').length,
-    contracted: projects.filter(p => p.status === '契約済み').length,
-    completed: projects.filter(p => p.status === '完了').length,
-  }), [projects]);
+  const summary = useMemo(() => computeSummary(projects), [projects]);
 
-  const nextActions = useMemo(() =>
-    projects
-      .filter(p => p.next_action_date)
-      .sort((a, b) => (a.next_action_date || '').localeCompare(b.next_action_date || '')),
-    [projects]
-  );
+  const nextActions = useMemo(() => computeNextActions(projects), [projects]);
 
   const today = new Date().toISOString().slice(0, 10);
 
