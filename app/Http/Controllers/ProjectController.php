@@ -23,12 +23,7 @@ class ProjectController extends Controller
         }
 
         if ($keyword = $request->input('keyword')) {
-            $query->where(function ($q) use ($keyword) {
-                $q->where('name', 'like', "%{$keyword}%")
-                  ->orWhere('client_name', 'like', "%{$keyword}%")
-                  ->orWhere('description', 'like', "%{$keyword}%")
-                  ->orWhere('memo', 'like', "%{$keyword}%");
-            });
+            $query->searchText($keyword);
         }
 
         if ($status = $request->input('status')) {

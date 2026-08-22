@@ -1,0 +1,81 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Resources\ProjectResource;
+use App\Models\Project;
+use Illuminate\Http\Request;
+
+/**
+ * ゴミ箱(論理削除済みProject)の一覧・復元・完全削除。
+ *
+ * restore/forceDeleteは、SoftDeletesのグローバルスコープにより通常のroute model binding
+ * (`Project $project`)では削除済みモデルを取得できないため、`withTrashed()`で明示的に取得する。
+ */
+class ProjectTrashController extends Controller
+{
+    public function index(Request $request)
+    {
+        $request->validate([
+            'type' => ['sometimes', 'string', 'in:career,side_job'],
+        ]);
+
+        $query = Project::onlyTrashed();
+
+        if ($type = $request->input('type')) {
+            $query->where('type', $type);
+        }
+
+        if ($status = $request->input('status')) {
+            $query->where('status', $status);
+        }
+
+        if ($search = $request->input('search')) {
+            $query->searchText($search);
+        }
+
+        $projects = $query->orderBy('deleted_at', 'desc')->get();
+
+        return ProjectResource::collection($projects);
+    }
+
+    public function restore(int $id)
+    {
+        $project = Project::withTrashed()->find($id);
+
+        if ($project === null) {
+            abort(404);
+        }
+
+        if (! $project->trashed()) {
+            return response()->json([
+                'message' => '削除済みでないProjectは復元できません。',
+                'error_code' => 'not_trashed',
+            ], 409);
+        }
+
+        $project->restore();
+
+        return new ProjectResource($project);
+    }
+
+    public function forceDelete(int $id)
+    {
+        $project = Project::withTrashed()->find($id);
+
+        if ($project === null) {
+            abort(404);
+        }
+
+        if (! $project->trashed()) {
+            return response()->json([
+                'message' => '削除済みでないProjectは完全削除できません。',
+                'error_code' => 'not_trashed',
+            ], 409);
+        }
+
+        $project->forceDelete();
+
+        return response()->noContent();
+    }
+}

@@ -50,4 +50,18 @@ class Project extends Model
         'fetched_at' => 'datetime',
         'delivery_date' => 'date',
     ];
+
+    /**
+     * name/client_name/description/memoのいずれかに$termを含むレコードへ絞り込む。
+     * ProjectController::index()の`keyword`、ProjectTrashController::index()の`search`の両方から使う。
+     */
+    public function scopeSearchText(\Illuminate\Database\Eloquent\Builder $query, string $term): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where(function ($q) use ($term) {
+            $q->where('name', 'like', "%{$term}%")
+              ->orWhere('client_name', 'like', "%{$term}%")
+              ->orWhere('description', 'like', "%{$term}%")
+              ->orWhere('memo', 'like', "%{$term}%");
+        });
+    }
 }
