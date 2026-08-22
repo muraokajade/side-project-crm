@@ -24,9 +24,10 @@ class ProjectApiTest extends TestCase
 
         $response = $this->postJson('/api/projects', $data);
 
+        // '未応募'はside_job用の旧ラベルのため、'気になる'へ正規化されて保存・返却される。
         $response->assertStatus(201)
             ->assertJsonPath('data.name', 'テスト案件')
-            ->assertJsonPath('data.status', '未応募')
+            ->assertJsonPath('data.status', '気になる')
             ->assertJsonPath('data.media', 'CrowdWorks')
             ->assertJsonPath('data.category', 'Web開発')
             ->assertJsonPath('data.reward', 50000)

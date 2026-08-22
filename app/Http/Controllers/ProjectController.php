@@ -12,11 +12,21 @@ class ProjectController extends Controller
 {
     public function index(Request $request)
     {
+        $request->validate([
+            'type' => ['sometimes', 'string', 'in:career,side_job'],
+        ]);
+
         $query = Project::query();
+
+        if ($type = $request->input('type')) {
+            $query->where('type', $type);
+        }
 
         if ($keyword = $request->input('keyword')) {
             $query->where(function ($q) use ($keyword) {
                 $q->where('name', 'like', "%{$keyword}%")
+                  ->orWhere('client_name', 'like', "%{$keyword}%")
+                  ->orWhere('description', 'like', "%{$keyword}%")
                   ->orWhere('memo', 'like', "%{$keyword}%");
             });
         }
@@ -29,6 +39,8 @@ class ProjectController extends Controller
             $query->where('media', $media);
         }
 
+        // 論理削除済みは既定(SoftDeletesのグローバルスコープ)で除外される。
+
         $projects = $query->orderBy('created_at', 'desc')->get();
 
         return ProjectResource::collection($projects);
@@ -39,7 +51,9 @@ class ProjectController extends Controller
         $validated = $request->validated();
         $project = Project::create($validated);
 
-        return (new ProjectResource($project))->response()->setStatusCode(201);
+        // typeなど省略可能な項目はDB側のデフォルト値が適用されるが、
+        // create()直後のインメモリなモデルにはその値が反映されていないため再取得する。
+        return (new ProjectResource($project->fresh()))->response()->setStatusCode(201);
     }
 
     public function update(UpdateProjectRequest $request, Project $project)
