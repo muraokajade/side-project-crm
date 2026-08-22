@@ -1,0 +1,521 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Project;
+use App\Services\UrlImport\HostResolver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
+use Tests\Support\FakeHostResolver;
+use Tests\TestCase;
+
+class UrlImportPreviewApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+
+    /**
+     * @param array<string, list<string>> $map
+     */
+    private function fakeDns(array $map): void
+    {
+        $this->app->bind(HostResolver::class, fn () => new FakeHostResolver($map));
+    }
+
+    // ---- 入力検証 -----------------------------------------------------
+
+    public function test_url_is_required(): void
+    {
+        $response = $this->postJson('/api/import/preview', []);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['url']);
+    }
+
+    public function test_invalid_type_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', [
+            'url' => 'https://example.com/',
+            'type' => 'not_a_type',
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['type']);
+    }
+
+    public function test_type_omitted_defaults_to_side_job(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="タイトル"></head></html>',
+            200,
+            ['Content-Type' => 'text/html; charset=UTF-8']
+        )]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(200)->assertJsonPath('data.type', 'side_job');
+    }
+
+    public function test_type_career_is_echoed_back(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><title>タイトル</title></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $response = $this->postJson('/api/import/preview', [
+            'url' => 'https://example.com/',
+            'type' => 'career',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('data.type', 'career');
+    }
+
+    // ---- SSRF対策(初回URL) --------------------------------------------
+
+    public function test_file_scheme_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'file:///etc/passwd']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'unsupported_scheme');
+    }
+
+    public function test_ftp_scheme_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'ftp://example.com/file']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'unsupported_scheme');
+    }
+
+    public function test_localhost_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://localhost/']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+    }
+
+    public function test_ipv4_loopback_literal_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://127.0.0.1/admin']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+    }
+
+    public function test_ipv6_loopback_literal_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://[::1]/admin']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+    }
+
+    public function test_private_ip_literal_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://192.168.1.1/']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+    }
+
+    public function test_link_local_ip_literal_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://169.254.169.254/metadata']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+    }
+
+    public function test_reserved_ip_literal_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://240.0.0.1/']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+    }
+
+    public function test_credentials_in_url_are_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://user:pass@example.com/']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'credentials_in_url');
+    }
+
+    public function test_unusual_port_is_rejected(): void
+    {
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://example.com:8080/']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'invalid_port');
+    }
+
+    public function test_hostname_resolving_to_private_ip_is_rejected(): void
+    {
+        $this->fakeDns(['internal.example.com' => ['10.0.0.5']]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://internal.example.com/page']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+        // エラーレスポンスに解決済みの内部IPを含めない。
+        $this->assertStringNotContainsString('10.0.0.5', $response->getContent());
+    }
+
+    public function test_original_hostname_is_preserved_for_the_actual_request(): void
+    {
+        // 検証済みIPへ接続を固定しても、実際に送信されるリクエストのURL(Host/SNIの元)は
+        // 元のホスト名のままであることを確認する(IPアドレスへ書き換えない)。
+        $this->fakeDns(['example.com' => ['93.184.216.34']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><title>タイトル</title></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/job/1']);
+
+        $response->assertStatus(200);
+        Http::assertSent(function (Request $request) {
+            return $request->url() === 'https://example.com/job/1';
+        });
+    }
+
+    public function test_unresolvable_hostname_is_rejected(): void
+    {
+        $this->fakeDns([]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://does-not-resolve.example/page']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'dns_resolution_failed');
+    }
+
+    // ---- リダイレクト ---------------------------------------------------
+
+    public function test_safe_redirect_is_followed_and_final_content_is_used(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake([
+            'https://example.com/start' => Http::response('', 302, ['Location' => 'https://example.com/final']),
+            'https://example.com/final' => Http::response(
+                '<html><head><title>最終ページ</title></head></html>',
+                200,
+                ['Content-Type' => 'text/html']
+            ),
+        ]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/start']);
+
+        $response->assertStatus(200)->assertJsonPath('data.name', '最終ページ');
+    }
+
+    public function test_redirect_to_private_ip_is_rejected(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake([
+            'https://example.com/start' => Http::response('', 302, ['Location' => 'http://169.254.169.254/metadata']),
+        ]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/start']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+    }
+
+    public function test_too_many_redirects_is_rejected(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake([
+            'https://example.com/a' => Http::response('', 302, ['Location' => 'https://example.com/b']),
+            'https://example.com/b' => Http::response('', 302, ['Location' => 'https://example.com/c']),
+            'https://example.com/c' => Http::response('', 302, ['Location' => 'https://example.com/d']),
+            'https://example.com/d' => Http::response('', 302, ['Location' => 'https://example.com/e']),
+            'https://example.com/e' => Http::response('<html></html>', 200, ['Content-Type' => 'text/html']),
+        ]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/a']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'too_many_redirects');
+    }
+
+    public function test_redirect_target_hostname_is_independently_dns_validated_and_rejected(): void
+    {
+        // リダイレクト元(example.com)は公開IPだが、リダイレクト先のホスト名は
+        // 別途DNS解決され、その結果がprivate IPであれば個別に拒否されることを確認する
+        // (リダイレクト先でも毎回、URL検証→DNS解決→公開IP判定をやり直す設計)。
+        $this->fakeDns([
+            'example.com' => ['8.8.8.8'],
+            'internal-redirect-target.example.com' => ['10.0.0.9'],
+        ]);
+        Http::fake([
+            'https://example.com/start' => Http::response('', 302, [
+                'Location' => 'https://internal-redirect-target.example.com/next',
+            ]),
+        ]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/start']);
+
+        $response->assertStatus(422)->assertJsonPath('error_code', 'blocked_host');
+        $this->assertStringNotContainsString('10.0.0.9', $response->getContent());
+    }
+
+    public function test_protocol_relative_redirect_is_resolved_using_current_scheme(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake([
+            'https://example.com/start' => Http::response('', 302, ['Location' => '//example.com/final']),
+            'https://example.com/final' => Http::response(
+                '<html><head><title>プロトコル相対リダイレクト先</title></head></html>',
+                200,
+                ['Content-Type' => 'text/html']
+            ),
+        ]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/start']);
+
+        $response->assertStatus(200)->assertJsonPath('data.name', 'プロトコル相対リダイレクト先');
+    }
+
+    // ---- 取得失敗の分類 --------------------------------------------------
+
+    public function test_remote_403_is_mapped_to_forbidden(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('forbidden', 403)]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'forbidden');
+    }
+
+    public function test_remote_404_is_mapped_to_not_found(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('not found', 404)]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'not_found');
+    }
+
+    public function test_remote_429_is_mapped_to_rate_limited(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('too many requests', 429)]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'rate_limited');
+    }
+
+    public function test_remote_5xx_is_mapped_to_upstream_server_error(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('server error', 503)]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'upstream_server_error');
+    }
+
+    public function test_connection_failure_is_mapped_to_connection_failed(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(function (Request $request) {
+            throw new ConnectionException('Could not resolve host');
+        });
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'connection_failed');
+    }
+
+    public function test_connection_failure_with_multiple_pinned_candidate_ips_is_still_mapped_safely(): void
+    {
+        // 検証済みIPが複数(IPv4+IPv6)ある場合でも、全候補への接続に失敗した際は
+        // 内部情報を含まない安全なエラーへ変換されることを確認する。
+        $this->fakeDns(['example.com' => ['93.184.216.34', '2606:4700:4700::1111']]);
+        Http::fake(function (Request $request) {
+            throw new ConnectionException('cURL error 7: Failed to connect to 93.184.216.34 port 443: Connection refused');
+        });
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'connection_failed');
+        $this->assertStringNotContainsString('93.184.216.34', $response->getContent());
+        $this->assertStringNotContainsString('2606:4700:4700::1111', $response->getContent());
+    }
+
+    public function test_timeout_is_mapped_to_timeout(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(function (Request $request) {
+            throw new ConnectionException('cURL error 28: Operation timed out');
+        });
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'timeout');
+    }
+
+    public function test_non_html_content_type_is_rejected(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('%PDF-1.4 ...', 200, ['Content-Type' => 'application/pdf'])]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/file.pdf']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'unsupported_content_type');
+    }
+
+    public function test_content_type_with_charset_parameter_is_accepted(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><title>charset付きページ</title></head></html>',
+            200,
+            ['Content-Type' => 'text/html; charset=Shift_JIS']
+        )]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(200)->assertJsonPath('data.name', 'charset付きページ');
+    }
+
+    public function test_oversized_response_is_rejected(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        $hugeBody = '<html><body>' . str_repeat('a', 3 * 1024 * 1024) . '</body></html>';
+        Http::fake(['*' => Http::response($hugeBody, 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(502)->assertJsonPath('error_code', 'response_too_large');
+    }
+
+    // ---- 抽出結果の組み立て -----------------------------------------------
+
+    public function test_ogp_extraction_end_to_end(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head>'
+                . '<meta property="og:title" content="OGP案件タイトル">'
+                . '<meta property="og:description" content="OGPの説明文">'
+                . '</head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/job/1']);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.name', 'OGP案件タイトル')
+            ->assertJsonPath('data.description', 'OGPの説明文')
+            ->assertJsonPath('data.fetch_status', 'success')
+            ->assertJsonPath('data.warnings', []);
+    }
+
+    public function test_json_ld_job_posting_extraction_end_to_end(): void
+    {
+        $this->fakeDns(['jobs.example.com' => ['8.8.8.8']]);
+        $html = '<html><head><script type="application/ld+json">'
+            . json_encode([
+                '@type' => 'JobPosting',
+                'title' => 'JSON-LD案件タイトル',
+                'description' => 'JSON-LD経由の説明文',
+                'hiringOrganization' => ['name' => '株式会社サンプル'],
+                'validThrough' => '2026-10-01',
+            ])
+            . '</script></head></html>';
+
+        Http::fake(['*' => Http::response($html, 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://jobs.example.com/postings/1']);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.name', 'JSON-LD案件タイトル')
+            ->assertJsonPath('data.client_name', '株式会社サンプル')
+            ->assertJsonPath('data.deadline', '2026-10-01');
+    }
+
+    public function test_crowdworks_job_detail_extraction_end_to_end(): void
+    {
+        $this->fakeDns(['crowdworks.jp' => ['8.8.8.8']]);
+        $html = <<<'HTML'
+            <html><body>
+                <article class="job-detail">
+                    <h1 class="job-detail__title">CrowdWorks案件</h1>
+                    <div class="job-detail__reward">固定報酬制 60,000円</div>
+                    <div class="job-detail__category">Web開発</div>
+                    <div class="job-detail__body">案件本文です。</div>
+                </article>
+                <aside class="related-jobs">
+                    <div class="job-card"><h2>関連案件(混入してはいけない)</h2></div>
+                </aside>
+            </body></html>
+            HTML;
+
+        Http::fake(['*' => Http::response($html, 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', [
+            'url' => 'https://crowdworks.jp/public/jobs/123456',
+            'type' => 'side_job',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.name', 'CrowdWorks案件')
+            ->assertJsonPath('data.media', 'CrowdWorks')
+            ->assertJsonPath('data.reward', 60000)
+            ->assertJsonPath('data.category', 'Web開発');
+
+        $this->assertStringNotContainsString('関連案件', $response->json('data.name'));
+    }
+
+    public function test_insufficient_extraction_returns_partial_with_warnings(): void
+    {
+        $this->fakeDns(['blank.example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('<html><body><p>何もメタ情報がないページ</p></body></html>', 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://blank.example.com/']);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.fetch_status', 'partial')
+            ->assertJsonPath('data.name', null);
+
+        $this->assertNotEmpty($response->json('data.warnings'));
+    }
+
+    public function test_malformed_html_does_not_error(): void
+    {
+        $this->fakeDns(['broken.example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('<html><head><title>壊れたページ<body><div><p>閉じタグ不足', 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://broken.example.com/']);
+
+        $response->assertStatus(200)->assertJsonPath('data.name', '壊れたページ');
+    }
+
+    // ---- DB非保存の確認 --------------------------------------------------
+
+    public function test_preview_does_not_change_project_count(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><title>プレビュー確認</title></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $before = Project::count();
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
+
+        $response->assertStatus(200);
+        $this->assertSame($before, Project::count());
+    }
+
+    public function test_rejected_preview_does_not_change_project_count(): void
+    {
+        $before = Project::count();
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'http://127.0.0.1/']);
+
+        $response->assertStatus(422);
+        $this->assertSame($before, Project::count());
+    }
+}
