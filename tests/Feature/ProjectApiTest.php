@@ -153,7 +153,8 @@ class ProjectApiTest extends TestCase
 
         $response->assertStatus(204);
 
-        $this->assertDatabaseMissing('projects', ['id' => $project->id]);
+        // SoftDeletes導入により、レコードは物理削除されずdeleted_atが設定される。
+        $this->assertSoftDeleted('projects', ['id' => $project->id]);
     }
 
     public function test_delete_nonexistent_project_returns_404(): void

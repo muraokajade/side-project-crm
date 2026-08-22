@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Project extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'name',
         'project_url',
@@ -24,6 +27,16 @@ class Project extends Model
         'memo',
         'priority',
         'is_favorite',
+        'type',
+        'description',
+        'deadline',
+        'fetched_at',
+        'job_type',
+        'location',
+        'remote_type',
+        'employment_type',
+        'contract_type',
+        'delivery_date',
     ];
 
     protected $casts = [
@@ -33,5 +46,8 @@ class Project extends Model
         'reward' => 'integer',
         'applicant_count' => 'integer',
         'recruitment_count' => 'integer',
+        'deadline' => 'date',
+        'fetched_at' => 'datetime',
+        'delivery_date' => 'date',
     ];
 }
