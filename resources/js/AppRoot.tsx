@@ -1,19 +1,38 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Project, ProjectFormData, ApiValidationErrors } from './types/project';
-import { STATUS_OPTIONS, MEDIA_OPTIONS, STATUS_COLORS } from './constants/projectOptions';
-import { computeSummary, computeNextActions } from './utils/projectSummary';
-import ProjectModal from './ProjectModal';
+import { Project, ProjectFormData, ApiValidationErrors, ProjectType } from './types/project';
+import { computeStatusSummary } from './utils/projectSummary';
+import { listProjects, createProject, updateProject, deleteProject } from './api/projects';
+import ProjectModal, { ProjectModalNotice } from './ProjectModal';
+import ProjectCard from './components/ProjectCard';
+import UrlImportModal from './components/UrlImportModal';
+import TrashView from './components/TrashView';
+
+type TypeFilter = 'all' | ProjectType;
+
+const TYPE_TABS: { value: TypeFilter; label: string }[] = [
+  { value: 'all', label: 'すべて' },
+  { value: 'career', label: '転職' },
+  { value: 'side_job', label: '副業' },
+];
+
+const SEARCH_DEBOUNCE_MS = 400;
 
 function AppRoot() {
+  const [view, setView] = useState<'list' | 'trash'>('list');
   const [projects, setProjects] = useState<Project[]>([]);
-  const [keyword, setKeyword] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [mediaFilter, setMediaFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [createInitialData, setCreateInitialData] = useState<ProjectFormData | undefined>(undefined);
+  const [createNotice, setCreateNotice] = useState<ProjectModalNotice | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalErrors, setModalErrors] = useState<Record<string, string[]> | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+
   // isSubmitting/deletingId (state) はボタンのdisabled表示用。
   // 以下のrefは、Reactのstate反映(再レンダリング)を待たずに二重送信を同期的に拒否するためのガード。
   const isSubmittingRef = useRef(false);
@@ -21,45 +40,65 @@ function AppRoot() {
 
   const fetchProjects = async () => {
     const params = new URLSearchParams();
-    if (keyword) params.set('keyword', keyword);
-    if (statusFilter) params.set('status', statusFilter);
-    if (mediaFilter) params.set('media', mediaFilter);
-    const res = await fetch(`/api/projects?${params.toString()}`);
+    if (typeFilter !== 'all') params.set('type', typeFilter);
+    if (appliedSearch) params.set('keyword', appliedSearch);
+    const res = await listProjects(params);
     const json = await res.json();
-    setProjects(json.data);
+    setProjects(json.data ?? []);
   };
 
-  useEffect(() => { fetchProjects(); }, [keyword, statusFilter, mediaFilter]);
+  useEffect(() => { fetchProjects(); }, [typeFilter, appliedSearch]);
 
-  const summary = useMemo(() => computeSummary(projects), [projects]);
+  // 入力のたびに毎回APIへ問い合わせない(過剰通信防止)ためのdebounce。
+  useEffect(() => {
+    const handle = setTimeout(() => setAppliedSearch(searchInput), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
 
-  const nextActions = useMemo(() => computeNextActions(projects), [projects]);
+  const clearSearch = () => {
+    setSearchInput('');
+    setAppliedSearch('');
+  };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const summary = useMemo(() => computeStatusSummary(projects), [projects]);
+
+  const buildSubmitBody = (data: ProjectFormData, isCreate: boolean) => {
+    const body: Record<string, unknown> = { ...data };
+    const numericFields: (keyof ProjectFormData)[] = ['reward', 'applicant_count', 'recruitment_count'];
+    numericFields.forEach(key => {
+      const value = data[key] as string;
+      if (value) body[key] = Number(value);
+      else if (isCreate) delete body[key];
+      else body[key] = null;
+    });
+    Object.keys(body).forEach(k => {
+      if (body[k] === '') body[k] = isCreate ? undefined : null;
+    });
+    Object.keys(body).forEach(k => { if (body[k] === undefined) delete body[k]; });
+    return body;
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingProject(null);
+    setModalErrors(undefined);
+    setCreateInitialData(undefined);
+    setCreateNotice(null);
+  };
 
   const handleCreate = async (data: ProjectFormData) => {
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
 
-    const body: Record<string, unknown> = { ...data };
-    if (data.reward) body.reward = Number(data.reward);
-    else delete body.reward;
-    if (data.applicant_count) body.applicant_count = Number(data.applicant_count);
-    else delete body.applicant_count;
-    if (data.recruitment_count) body.recruitment_count = Number(data.recruitment_count);
-    else delete body.recruitment_count;
-    Object.keys(body).forEach(k => { if (body[k] === '') delete body[k]; });
+    const body = buildSubmitBody(data, true);
 
     setIsSubmitting(true);
     setModalErrors(undefined);
     try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = await createProject(body);
       if (res.status === 201) {
-        setModalOpen(false);
+        closeModal();
+        setView('list');
         await fetchProjects();
       } else if (res.status === 422) {
         const json: ApiValidationErrors = await res.json();
@@ -80,28 +119,17 @@ function AppRoot() {
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
 
-    const body: Record<string, unknown> = { ...data };
-    if (data.reward) body.reward = Number(data.reward);
-    else body.reward = null;
-    if (data.applicant_count) body.applicant_count = Number(data.applicant_count);
-    else body.applicant_count = null;
-    if (data.recruitment_count) body.recruitment_count = Number(data.recruitment_count);
-    else body.recruitment_count = null;
-    Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });
+    const body = buildSubmitBody(data, false);
     body.name = data.name;
     body.status = data.status;
+    body.type = data.type;
 
     setIsSubmitting(true);
     setModalErrors(undefined);
     try {
-      const res = await fetch(`/api/projects/${editingProject.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = await updateProject(editingProject.id, body);
       if (res.status === 200) {
-        setModalOpen(false);
-        setEditingProject(null);
+        closeModal();
         await fetchProjects();
       } else if (res.status === 422) {
         const json: ApiValidationErrors = await res.json();
@@ -119,13 +147,13 @@ function AppRoot() {
 
   const handleDelete = async (id: number) => {
     // window.confirm()自体が同期的にブロックするため単独でも同一idの多重実行は起きないが、
-    // confirm()をモックする（テスト等）環境も想定し、refで同期的に二重削除を防ぐ。
+    // confirm()をモックする(テスト等)環境も想定し、refで同期的に二重削除を防ぐ。
     if (deletingIdsRef.current.has(id)) return;
     if (!window.confirm('この案件を削除しますか？')) return;
     deletingIdsRef.current.add(id);
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
+      const res = await deleteProject(id);
       if (res.status === 204) {
         await fetchProjects();
       } else {
@@ -139,152 +167,153 @@ function AppRoot() {
     }
   };
 
-  const formatReward = (reward: number | null) => {
-    if (reward === null) return '-';
-    return `¥${reward.toLocaleString()}`;
+  const openCreate = () => {
+    setEditingProject(null);
+    setCreateInitialData(undefined);
+    setCreateNotice(null);
+    setModalErrors(undefined);
+    setView('list');
+    setModalOpen(true);
   };
 
-  const openCreate = () => { setEditingProject(null); setModalErrors(undefined); setModalOpen(true); };
-  const openEdit = (p: Project) => { setEditingProject(p); setModalErrors(undefined); setModalOpen(true); };
+  const openEdit = (p: Project) => {
+    setEditingProject(p);
+    setCreateInitialData(undefined);
+    setCreateNotice(null);
+    setModalErrors(undefined);
+    setModalOpen(true);
+  };
+
+  const handlePreviewReady = (formData: ProjectFormData, notice: ProjectModalNotice) => {
+    setImportOpen(false);
+    setEditingProject(null);
+    setCreateInitialData(formData);
+    setCreateNotice(notice);
+    setModalErrors(undefined);
+    setView('list');
+    setModalOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-slate-800">副業案件管理</h1>
-          <button onClick={openCreate}
-            className="px-4 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700">
-            案件を登録
-          </button>
+      <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="text-xl font-semibold text-slate-800">転職＋副業 管理</h1>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setImportOpen(true)}
+              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
+              URLから登録
+            </button>
+            <button onClick={openCreate}
+              className="px-3 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700">
+              手入力
+            </button>
+            <button onClick={() => setView('trash')}
+              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
+              ゴミ箱
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[
-            { label: '案件総数', value: summary.total, color: 'border-t-slate-400' },
-            { label: '面談予定', value: summary.interview, color: 'border-t-blue-400' },
-            { label: '返信待ち', value: summary.waiting, color: 'border-t-amber-400' },
-            { label: '契約済み', value: summary.contracted, color: 'border-t-violet-400' },
-            { label: '完了', value: summary.completed, color: 'border-t-green-400' },
-          ].map(card => (
-            <div key={card.label} className={`bg-white rounded-lg shadow-sm p-4 border-t-4 ${card.color}`}>
-              <p className="text-sm text-slate-500">{card.label}</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{card.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Search & Filter */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex flex-col md:flex-row gap-3">
-            <input type="text" placeholder="案件名・メモ検索" value={keyword}
-              onChange={e => setKeyword(e.target.value)}
-              className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              className="border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-              <option value="">すべてのステータス</option>
-              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select value={mediaFilter} onChange={e => setMediaFilter(e.target.value)}
-              className="border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-              <option value="">すべての媒体</option>
-              {MEDIA_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+      {view === 'trash' ? (
+        <TrashView onClose={() => setView('list')} />
+      ) : (
+        <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            {[
+              { label: '総数', value: summary.total, color: 'border-t-slate-400' },
+              { label: '対応中', value: summary.open, color: 'border-t-blue-400' },
+              { label: '終了', value: summary.closed, color: 'border-t-gray-400' },
+              { label: 'お気に入り', value: summary.favorite, color: 'border-t-amber-400' },
+            ].map(card => (
+              <div key={card.label} className={`bg-white rounded-lg shadow-sm p-4 border-t-4 ${card.color}`}>
+                <p className="text-sm text-slate-500">{card.label}</p>
+                <p className="text-2xl font-bold text-slate-800 mt-1">{card.value}</p>
+              </div>
+            ))}
           </div>
-        </div>
 
-        {/* Next Actions */}
-        {nextActions.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-slate-700 mb-3">次に対応する案件</h2>
-            <div className="space-y-2">
-              {nextActions.map(p => (
-                <div key={p.id} className={`flex items-center justify-between p-3 rounded-md text-sm ${
-                  p.next_action_date && p.next_action_date.slice(0, 10) <= today ? 'bg-red-50' : 'bg-slate-50'
-                }`}>
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium text-slate-800">{p.name}</span>
-                    <span className="text-slate-500">{p.next_action}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`px-2 py-0.5 rounded text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
-                      {p.status}
-                    </span>
-                    <span className="text-slate-500 text-xs">{p.next_action_date?.slice(0, 10)}</span>
-                  </div>
-                </div>
+          {/* Type tabs & Search */}
+          <div className="bg-white rounded-lg shadow-sm p-4 space-y-3">
+            <div className="flex gap-2">
+              {TYPE_TABS.map(tab => (
+                <button
+                  key={tab.value}
+                  onClick={() => setTypeFilter(tab.value)}
+                  className={`px-3 py-1.5 rounded-md text-sm ${
+                    typeFilter === tab.value
+                      ? 'bg-slate-800 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
               ))}
             </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="案件名・クライアント・概要・メモを検索"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                className="w-full border border-slate-300 rounded-md pl-3 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  aria-label="検索をクリア"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
-        )}
 
-        {/* Project List */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-700">案件一覧 <span className="text-slate-400 font-normal">{projects.length}件</span></h2>
+          {/* Project List */}
+          <div className="space-y-2">
+            <h2 className="text-sm font-semibold text-slate-700 px-1">
+              案件一覧 <span className="text-slate-400 font-normal">{projects.length}件</span>
+            </h2>
+            {projects.length === 0 && (
+              <div className="bg-white rounded-lg shadow-sm p-8 text-center text-slate-400 text-sm">
+                案件がありません
+              </div>
+            )}
+            {projects.map(p => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                variant="active"
+                onEdit={openEdit}
+                onDelete={handleDelete}
+                deleting={deletingId === p.id}
+              />
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">案件名</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">媒体</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">カテゴリ</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">ステータス</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">報酬</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">次アクション</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">予定日</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">優先度</th>
-                  <th className="text-left px-4 py-3 font-medium whitespace-nowrap">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {projects.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{p.name}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.media || '-'}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.category || '-'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatReward(p.reward)}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.next_action || '-'}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.next_action_date?.slice(0, 10) || '-'}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.priority || '-'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex gap-2">
-                        <button onClick={() => openEdit(p)}
-                          className="text-slate-600 hover:text-slate-800 text-xs underline">編集</button>
-                        <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id}
-                          className="text-red-500 hover:text-red-700 text-xs underline disabled:opacity-50 disabled:no-underline">
-                          {deletingId === p.id ? '削除中...' : '削除'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {projects.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">案件がありません</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </main>
+        </main>
+      )}
 
       <ProjectModal
         open={modalOpen}
         mode={editingProject ? 'edit' : 'create'}
         project={editingProject}
+        initialData={editingProject ? undefined : createInitialData}
+        notice={editingProject ? null : createNotice}
         isSubmitting={isSubmitting}
         errors={modalErrors}
-        onClose={() => { setModalOpen(false); setEditingProject(null); setModalErrors(undefined); }}
+        onClose={closeModal}
         onSubmit={editingProject ? handleUpdate : handleCreate}
+      />
+
+      <UrlImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onPreviewReady={handlePreviewReady}
       />
     </div>
   );

@@ -1,56 +1,51 @@
 import { useState, useEffect } from 'react';
-import { Project, ProjectFormData } from './types/project';
-import { STATUS_OPTIONS, MEDIA_OPTIONS, CATEGORY_OPTIONS, PRIORITY_OPTIONS } from './constants/projectOptions';
+import { Project, ProjectFormData, ProjectType } from './types/project';
+import { MEDIA_OPTIONS, CATEGORY_OPTIONS, statusOptionsForType } from './constants/projectOptions';
+import { emptyFormData, projectToFormData } from './utils/toFormData';
+
+export interface ProjectModalNotice {
+  fetchStatus: 'success' | 'partial';
+  warnings: string[];
+}
 
 interface ProjectModalProps {
   open: boolean;
   mode: 'create' | 'edit';
   project: Project | null;
+  initialData?: ProjectFormData;
+  notice?: ProjectModalNotice | null;
   isSubmitting?: boolean;
   errors?: Record<string, string[]>;
   onClose: () => void;
   onSubmit: (data: ProjectFormData) => void;
 }
 
-const emptyForm: ProjectFormData = {
-  name: '', project_url: '', client_name: '', media: '', category: '',
-  applied_date: '', status: '未応募', reward: '', working_hours: '',
-  applicant_count: '', recruitment_count: '', application_text: '',
-  next_action: '', next_action_date: '', memo: '', priority: '', is_favorite: false,
-};
-
-export default function ProjectModal({ open, mode, project, isSubmitting, errors, onClose, onSubmit }: ProjectModalProps) {
-  const [form, setForm] = useState<ProjectFormData>(emptyForm);
+export default function ProjectModal({
+  open,
+  mode,
+  project,
+  initialData,
+  notice,
+  isSubmitting,
+  errors,
+  onClose,
+  onSubmit,
+}: ProjectModalProps) {
+  const [form, setForm] = useState<ProjectFormData>(emptyFormData());
   const [error, setError] = useState('');
 
   const fieldError = (name: string) => errors?.[name]?.[0];
 
   useEffect(() => {
     if (mode === 'edit' && project) {
-      setForm({
-        name: project.name,
-        project_url: project.project_url || '',
-        client_name: project.client_name || '',
-        media: project.media || '',
-        category: project.category || '',
-        applied_date: project.applied_date ? project.applied_date.slice(0, 10) : '',
-        status: project.status,
-        reward: project.reward !== null ? String(project.reward) : '',
-        working_hours: project.working_hours || '',
-        applicant_count: project.applicant_count !== null ? String(project.applicant_count) : '',
-        recruitment_count: project.recruitment_count !== null ? String(project.recruitment_count) : '',
-        application_text: project.application_text || '',
-        next_action: project.next_action || '',
-        next_action_date: project.next_action_date ? project.next_action_date.slice(0, 10) : '',
-        memo: project.memo || '',
-        priority: project.priority || '',
-        is_favorite: project.is_favorite,
-      });
+      setForm(projectToFormData(project));
+    } else if (initialData) {
+      setForm(initialData);
     } else {
-      setForm(emptyForm);
+      setForm(emptyFormData());
     }
     setError('');
-  }, [mode, project, open]);
+  }, [mode, project, initialData, open]);
 
   if (!open) return null;
 
@@ -63,6 +58,15 @@ export default function ProjectModal({ open, mode, project, isSubmitting, errors
     }
   };
 
+  const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextType = e.target.value as ProjectType;
+    setForm(prev => {
+      const nextStatusOptions = statusOptionsForType(nextType);
+      const status = nextStatusOptions.includes(prev.status) ? prev.status : nextStatusOptions[0];
+      return { ...prev, type: nextType, status };
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) {
@@ -73,6 +77,8 @@ export default function ProjectModal({ open, mode, project, isSubmitting, errors
     onSubmit(form);
   };
 
+  const statusOptions = statusOptionsForType(form.type);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/40" onClick={onClose}></div>
@@ -80,6 +86,20 @@ export default function ProjectModal({ open, mode, project, isSubmitting, errors
         <h2 className="text-lg font-semibold text-slate-800 mb-4">
           {mode === 'create' ? '案件を登録' : '案件を編集'}
         </h2>
+
+        {notice && (
+          <div className={`mb-4 rounded-md p-3 text-sm ${notice.fetchStatus === 'partial' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>
+            <p className="font-medium">
+              {notice.fetchStatus === 'partial' ? '一部の項目を自動取得できませんでした。内容を確認し、必要な項目を入力してください。' : 'URLからの取得に成功しました。内容を確認してください。'}
+            </p>
+            {notice.warnings.length > 0 && (
+              <ul className="list-disc list-inside mt-1 space-y-0.5">
+                {notice.warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
@@ -91,10 +111,19 @@ export default function ProjectModal({ open, mode, project, isSubmitting, errors
               {fieldError('name') && <p className="text-red-600 text-xs mt-1">{fieldError('name')}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">ステータス</label>
-              <select name="status" value={form.status} onChange={handleChange}
+              <label htmlFor="type" className="block text-sm font-medium text-slate-700 mb-1">種別</label>
+              <select id="type" name="type" value={form.type} onChange={handleTypeChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="career">転職</option>
+                <option value="side_job">副業</option>
+              </select>
+              {fieldError('type') && <p className="text-red-600 text-xs mt-1">{fieldError('type')}</p>}
+            </div>
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-slate-700 mb-1">ステータス</label>
+              <select id="status" name="status" value={form.status} onChange={handleChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
               {fieldError('status') && <p className="text-red-600 text-xs mt-1">{fieldError('status')}</p>}
             </div>
@@ -117,13 +146,34 @@ export default function ProjectModal({ open, mode, project, isSubmitting, errors
               {fieldError('category') && <p className="text-red-600 text-xs mt-1">{fieldError('category')}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">優先度</label>
-              <select name="priority" value={form.priority} onChange={handleChange}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-                <option value="">選択なし</option>
-                {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-              {fieldError('priority') && <p className="text-red-600 text-xs mt-1">{fieldError('priority')}</p>}
+              <label className="block text-sm font-medium text-slate-700 mb-1">クライアント/会社名</label>
+              <input type="text" name="client_name" value={form.client_name} onChange={handleChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('client_name') && <p className="text-red-600 text-xs mt-1">{fieldError('client_name')}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">案件URL</label>
+              <input type="url" name="project_url" value={form.project_url} onChange={handleChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('project_url') && <p className="text-red-600 text-xs mt-1">{fieldError('project_url')}</p>}
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">概要</label>
+              <textarea name="description" value={form.description} onChange={handleChange} rows={3}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('description') && <p className="text-red-600 text-xs mt-1">{fieldError('description')}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">応募日</label>
+              <input type="date" name="applied_date" value={form.applied_date} onChange={handleChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('applied_date') && <p className="text-red-600 text-xs mt-1">{fieldError('applied_date')}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">応募期限</label>
+              <input type="date" name="deadline" value={form.deadline} onChange={handleChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {fieldError('deadline') && <p className="text-red-600 text-xs mt-1">{fieldError('deadline')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">報酬（円）</label>
@@ -136,24 +186,6 @@ export default function ProjectModal({ open, mode, project, isSubmitting, errors
               <input type="text" name="working_hours" value={form.working_hours} onChange={handleChange} placeholder="例: 週10時間"
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
               {fieldError('working_hours') && <p className="text-red-600 text-xs mt-1">{fieldError('working_hours')}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">クライアント名</label>
-              <input type="text" name="client_name" value={form.client_name} onChange={handleChange}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
-              {fieldError('client_name') && <p className="text-red-600 text-xs mt-1">{fieldError('client_name')}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">案件URL</label>
-              <input type="url" name="project_url" value={form.project_url} onChange={handleChange}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
-              {fieldError('project_url') && <p className="text-red-600 text-xs mt-1">{fieldError('project_url')}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">応募日</label>
-              <input type="date" name="applied_date" value={form.applied_date} onChange={handleChange}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
-              {fieldError('applied_date') && <p className="text-red-600 text-xs mt-1">{fieldError('applied_date')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">応募人数</label>
@@ -179,6 +211,55 @@ export default function ProjectModal({ open, mode, project, isSubmitting, errors
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
               {fieldError('next_action_date') && <p className="text-red-600 text-xs mt-1">{fieldError('next_action_date')}</p>}
             </div>
+
+            {form.type === 'career' && (
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                <p className="md:col-span-2 text-xs font-medium text-slate-500">転職専用項目</p>
+                <div>
+                  <label htmlFor="job_type" className="block text-sm font-medium text-slate-700 mb-1">職種</label>
+                  <input id="job_type" type="text" name="job_type" value={form.job_type} onChange={handleChange}
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+                  {fieldError('job_type') && <p className="text-red-600 text-xs mt-1">{fieldError('job_type')}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">勤務地</label>
+                  <input type="text" name="location" value={form.location} onChange={handleChange}
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+                  {fieldError('location') && <p className="text-red-600 text-xs mt-1">{fieldError('location')}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">リモート区分</label>
+                  <input type="text" name="remote_type" value={form.remote_type} onChange={handleChange} placeholder="例: フルリモート"
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+                  {fieldError('remote_type') && <p className="text-red-600 text-xs mt-1">{fieldError('remote_type')}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">雇用形態</label>
+                  <input type="text" name="employment_type" value={form.employment_type} onChange={handleChange} placeholder="例: 正社員"
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+                  {fieldError('employment_type') && <p className="text-red-600 text-xs mt-1">{fieldError('employment_type')}</p>}
+                </div>
+              </div>
+            )}
+
+            {form.type === 'side_job' && (
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                <p className="md:col-span-2 text-xs font-medium text-slate-500">副業専用項目</p>
+                <div>
+                  <label htmlFor="contract_type" className="block text-sm font-medium text-slate-700 mb-1">契約形態</label>
+                  <input id="contract_type" type="text" name="contract_type" value={form.contract_type} onChange={handleChange} placeholder="例: 業務委託"
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+                  {fieldError('contract_type') && <p className="text-red-600 text-xs mt-1">{fieldError('contract_type')}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">納品日</label>
+                  <input type="date" name="delivery_date" value={form.delivery_date} onChange={handleChange}
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+                  {fieldError('delivery_date') && <p className="text-red-600 text-xs mt-1">{fieldError('delivery_date')}</p>}
+                </div>
+              </div>
+            )}
+
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">応募文</label>
               <textarea name="application_text" value={form.application_text} onChange={handleChange} rows={3}
