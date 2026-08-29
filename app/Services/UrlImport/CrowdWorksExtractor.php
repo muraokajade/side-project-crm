@@ -25,6 +25,18 @@ class CrowdWorksExtractor
 
     private const JOB_DETAIL_PATH_PATTERN = '#^/public/jobs/\d+/?$#';
 
+    /**
+     * 金額が確定していないことを示す表記。併記された数値(「応相談(経験により300,000円)」等)を
+     * 報酬額として確定してしまわないよう、rewardには入れずreward_textのみ残す。
+     */
+    private const UNDETERMINED_REWARD_PATTERN = '/応相談|要相談|ご相談|相談の上|未掲載|未定|非公開|記載なし/u';
+
+    /**
+     * 期間・工数あたりの単価であることを示す表記。rewardは単位を持たない整数カラムのため、
+     * 「時給2,000円」を2,000という報酬額として保存すると実態とずれる。原文のみ残す。
+     */
+    private const UNIT_PRICED_REWARD_PATTERN = '/時給|日給|週給|月給|月額|年収|年俸|人月|単価/u';
+
     public function isCrowdWorksHost(string $host): bool
     {
         return in_array($host, self::ALLOWED_HOSTS, true);
@@ -59,7 +71,7 @@ class CrowdWorksExtractor
             'working_hours' => $this->firstText($xpath, './/*[contains(concat(" ", normalize-space(@class), " "), " job-detail__working-hours ")]', $root),
         ];
 
-        [$fields['reward'], $fields['reward_note']] = $this->parseReward(
+        [$fields['reward'], $fields['reward_text']] = $this->parseReward(
             $this->firstText($xpath, './/*[contains(concat(" ", normalize-space(@class), " "), " job-detail__reward ")]', $root)
         );
 
@@ -115,6 +127,11 @@ class CrowdWorksExtractor
     }
 
     /**
+     * ページ上の報酬表記(固定報酬・時給・月額・応相談等)を、原文の体裁を保ったまま
+     * reward_textとして返す。数値として一意に確定できる場合のみrewardも設定する。
+     * 「0円」等、数値としての0は「未設定」のプレースホルダである可能性が高いため、
+     * 実額としてもreward_textとしても採用しない。
+     *
      * @return array{0: int|null, 1: string|null}
      */
     private function parseReward(?string $text): array
@@ -123,15 +140,33 @@ class CrowdWorksExtractor
             return [null, null];
         }
 
-        // レンジ表記(〜・-・から等)を含む場合は単一額として確定できないため推測しない。
+        // 「応相談」「未掲載」等は金額が確定していないため、0円にも推測額にも変換せず原文のみ残す。
+        if (preg_match(self::UNDETERMINED_REWARD_PATTERN, $text) === 1) {
+            return [null, $text];
+        }
+
+        // 「時給」「月額」等の単価表記は、単位を持たないrewardへ入れると意味がずれるため原文のみ残す。
+        if (preg_match(self::UNIT_PRICED_REWARD_PATTERN, $text) === 1) {
+            return [null, $text];
+        }
+
+        // レンジ表記(〜・-・から等)を含む場合は単一額として確定できないため、
+        // 原文をそのままreward_textとして残す(推測で単一額へ変換しない)。
         if (preg_match('/[〜～\-−]|から/u', $text) === 1) {
-            return [null, "報酬情報(参考): {$text}"];
+            return [null, $text];
         }
 
         if (preg_match('/([\d,]+)\s*円/u', $text, $m) === 1) {
-            return [(int) str_replace(',', '', $m[1]), null];
+            $amount = (int) str_replace(',', '', $m[1]);
+
+            if ($amount === 0) {
+                return [null, null];
+            }
+
+            return [$amount, $text];
         }
 
-        return [null, "報酬情報(参考): {$text}"];
+        // 数値を含まない場合(「応相談」等)は、原文をそのままreward_textとして残す。
+        return [null, $text];
     }
 }

@@ -59,6 +59,7 @@ class StoreProjectRequest extends FormRequest
             'deadline' => ['nullable', 'date'],
             'fetched_at' => ['nullable', 'date'],
             'reward' => ['nullable', 'integer', 'min:0'],
+            'reward_text' => ['nullable', 'string', 'max:255'],
             'working_hours' => ['nullable', 'string', 'max:255'],
             'applicant_count' => ['nullable', 'integer', 'min:0'],
             'recruitment_count' => ['nullable', 'integer', 'min:0'],

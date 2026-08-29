@@ -18,6 +18,7 @@ class Project extends Model
         'applied_date',
         'status',
         'reward',
+        'reward_text',
         'working_hours',
         'applicant_count',
         'recruitment_count',

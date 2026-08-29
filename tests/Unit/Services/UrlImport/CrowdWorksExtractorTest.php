@@ -85,7 +85,7 @@ class CrowdWorksExtractorTest extends TestCase
         $this->assertSame('Web開発', $result['fields']['category']);
         $this->assertSame('週10時間程度', $result['fields']['working_hours']);
         $this->assertSame(80000, $result['fields']['reward']);
-        $this->assertArrayNotHasKey('reward_note', $result['fields']);
+        $this->assertSame('固定報酬制 80,000円', $result['fields']['reward_text']);
         $this->assertSame(12, $result['fields']['applicant_count']);
         $this->assertSame(1, $result['fields']['recruitment_count']);
         $this->assertStringContainsString('React/TypeScript', $result['fields']['description']);
@@ -114,8 +114,74 @@ class CrowdWorksExtractorTest extends TestCase
         $result = $this->extractor()->extract($this->xpathFor($html));
 
         $this->assertArrayNotHasKey('reward', $result['fields']);
-        $this->assertArrayHasKey('reward_note', $result['fields']);
-        $this->assertStringContainsString('50,000円〜100,000円', $result['fields']['reward_note']);
+        $this->assertArrayHasKey('reward_text', $result['fields']);
+        $this->assertStringContainsString('50,000円〜100,000円', $result['fields']['reward_text']);
+    }
+
+    public function test_zero_yen_reward_is_not_treated_as_valid(): void
+    {
+        // 「0円」は「未設定」のプレースホルダである可能性が高く、実額・reward_textのどちらとしても採用しない。
+        $html = str_replace('固定報酬制 80,000円', '0円', self::FIXTURE_HTML);
+
+        $result = $this->extractor()->extract($this->xpathFor($html));
+
+        $this->assertArrayNotHasKey('reward', $result['fields']);
+        $this->assertArrayNotHasKey('reward_text', $result['fields']);
+    }
+
+    public function test_negotiable_reward_text_is_preserved_as_is(): void
+    {
+        // 「応相談」はページ上の表記のまま reward_text として保存し、rewardは設定しない。
+        $html = str_replace('固定報酬制 80,000円', '応相談', self::FIXTURE_HTML);
+
+        $result = $this->extractor()->extract($this->xpathFor($html));
+
+        $this->assertArrayNotHasKey('reward', $result['fields']);
+        $this->assertSame('応相談', $result['fields']['reward_text']);
+    }
+
+    public function test_negotiable_reward_with_an_amount_does_not_set_numeric_reward(): void
+    {
+        // 「応相談」に金額が併記されていても、確定額ではないためrewardへは入れず原文のみ残す。
+        $html = str_replace('固定報酬制 80,000円', '応相談（経験により 300,000円）', self::FIXTURE_HTML);
+
+        $result = $this->extractor()->extract($this->xpathFor($html));
+
+        $this->assertArrayNotHasKey('reward', $result['fields']);
+        $this->assertSame('応相談（経験により 300,000円）', $result['fields']['reward_text']);
+    }
+
+    public function test_unit_priced_reward_is_not_stored_as_a_lump_sum_reward(): void
+    {
+        // 「時給2,000円」は一括報酬2,000円ではないため、単位を持たないrewardへは入れない。
+        $html = str_replace('固定報酬制 80,000円', '時給 2,000円', self::FIXTURE_HTML);
+
+        $result = $this->extractor()->extract($this->xpathFor($html));
+
+        $this->assertArrayNotHasKey('reward', $result['fields']);
+        $this->assertSame('時給 2,000円', $result['fields']['reward_text']);
+    }
+
+    public function test_monthly_reward_is_not_stored_as_a_lump_sum_reward(): void
+    {
+        $html = str_replace('固定報酬制 80,000円', '月額 500,000円', self::FIXTURE_HTML);
+
+        $result = $this->extractor()->extract($this->xpathFor($html));
+
+        $this->assertArrayNotHasKey('reward', $result['fields']);
+        $this->assertSame('月額 500,000円', $result['fields']['reward_text']);
+    }
+
+    public function test_undisclosed_reward_is_preserved_as_text_without_becoming_zero(): void
+    {
+        foreach (['未掲載', '要相談', '非公開'] as $label) {
+            $html = str_replace('固定報酬制 80,000円', $label, self::FIXTURE_HTML);
+
+            $result = $this->extractor()->extract($this->xpathFor($html));
+
+            $this->assertArrayNotHasKey('reward', $result['fields'], "{$label}でrewardが設定された");
+            $this->assertSame($label, $result['fields']['reward_text']);
+        }
     }
 
     public function test_missing_detail_container_returns_no_fields_with_warning(): void

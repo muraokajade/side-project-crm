@@ -13,6 +13,7 @@ export interface Project {
   deadline: string | null;
   status: string;
   reward: number | null;
+  reward_text: string | null;
   working_hours: string | null;
   applicant_count: number | null;
   recruitment_count: number | null;
@@ -62,6 +63,7 @@ export interface ProjectFormData {
   deadline: string;
   status: string;
   reward: string;
+  reward_text: string;
   working_hours: string;
   applicant_count: string;
   recruitment_count: string;
@@ -90,6 +92,7 @@ export interface ProjectPreviewData {
   media: string | null;
   category: string | null;
   reward: number | null;
+  reward_text: string | null;
   working_hours: string | null;
   applicant_count: number | null;
   recruitment_count: number | null;

@@ -1,5 +1,14 @@
 import { Project, ProjectFormData, ProjectPreviewData, ProjectType } from '../types/project';
 
+/**
+ * reward_text導入前の旧データ用に、数値rewardから表示用の報酬表記を組み立てる。
+ * ProjectCardの表示と同じ桁区切り(ja-JP)を使い、編集・保存で表記が退行しないようにする。
+ */
+function formatRewardText(reward: number | null): string {
+  if (reward === null) return '';
+  return `${Number(reward).toLocaleString('ja-JP')}円`;
+}
+
 export const emptyFormData = (type: ProjectType = 'side_job'): ProjectFormData => ({
   type,
   name: '',
@@ -12,6 +21,7 @@ export const emptyFormData = (type: ProjectType = 'side_job'): ProjectFormData =
   deadline: '',
   status: '気になる',
   reward: '',
+  reward_text: '',
   working_hours: '',
   applicant_count: '',
   recruitment_count: '',
@@ -44,6 +54,9 @@ export function projectToFormData(project: Project): ProjectFormData {
     deadline: project.deadline ? project.deadline.slice(0, 10) : '',
     status: project.status,
     reward: project.reward !== null ? String(project.reward) : '',
+    // reward_textがあれば一切加工せず優先する。未設定(reward_text導入前の旧データ)の場合のみ、
+    // 既存のreward(数値)から表示と同じ桁区切り表記を補い、保存しても表記が退行しないようにする。
+    reward_text: project.reward_text || formatRewardText(project.reward),
     working_hours: project.working_hours || '',
     applicant_count: project.applicant_count !== null ? String(project.applicant_count) : '',
     recruitment_count: project.recruitment_count !== null ? String(project.recruitment_count) : '',
@@ -75,6 +88,7 @@ export function previewToFormData(preview: ProjectPreviewData): ProjectFormData 
     media: preview.media || '',
     category: preview.category || '',
     reward: preview.reward !== null ? String(preview.reward) : '',
+    reward_text: preview.reward_text || '',
     working_hours: preview.working_hours || '',
     applicant_count: preview.applicant_count !== null ? String(preview.applicant_count) : '',
     recruitment_count: preview.recruitment_count !== null ? String(preview.recruitment_count) : '',

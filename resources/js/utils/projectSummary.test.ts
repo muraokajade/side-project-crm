@@ -16,6 +16,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     deadline: null,
     status: '未応募',
     reward: null,
+    reward_text: null,
     working_hours: null,
     applicant_count: null,
     recruitment_count: null,

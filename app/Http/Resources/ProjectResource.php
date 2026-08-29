@@ -27,6 +27,7 @@ class ProjectResource extends JsonResource
             'deadline' => $this->deadline,
             'status' => $this->status,
             'reward' => $this->reward,
+            'reward_text' => $this->reward_text,
             'working_hours' => $this->working_hours,
             'applicant_count' => $this->applicant_count,
             'recruitment_count' => $this->recruitment_count,

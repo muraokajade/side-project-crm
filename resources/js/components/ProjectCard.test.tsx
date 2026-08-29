@@ -17,6 +17,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     deadline: null,
     status: '気になる',
     reward: null,
+    reward_text: null,
     working_hours: null,
     applicant_count: null,
     recruitment_count: null,
@@ -128,6 +129,33 @@ describe('ProjectCard type専用項目', () => {
     fireEvent.click(screen.getByRole('button', { name: /テスト案件/ }));
     expect(screen.getByText('業務委託')).toBeInTheDocument();
     expect(screen.queryByText('転職専用項目')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectCard 報酬表示', () => {
+  it('reward_textがあればそれを優先して表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '応相談', reward: null })} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: /テスト案件/ }));
+    expect(screen.getByText('応相談')).toBeInTheDocument();
+  });
+
+  it('reward_textが空でrewardがあれば数値から整形して表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: null, reward: 80000 })} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: /テスト案件/ }));
+    expect(screen.getByText('80,000円')).toBeInTheDocument();
+  });
+
+  it('reward_textとrewardが両方あってもreward_textを表示する(数値へ丸めない)', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '時給 2,000円', reward: 2000 })} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: /テスト案件/ }));
+    expect(screen.getByText('時給 2,000円')).toBeInTheDocument();
+    expect(screen.queryByText('2,000円')).not.toBeInTheDocument();
+  });
+
+  it('reward_textもrewardも無ければ「未掲載」と表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: null, reward: null })} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: /テスト案件/ }));
+    expect(screen.getByText('未掲載')).toBeInTheDocument();
   });
 });
 

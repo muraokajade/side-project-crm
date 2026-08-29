@@ -34,6 +34,7 @@ describe('UrlImportModal', () => {
         media: 'example.com',
         category: null,
         reward: 60000,
+        reward_text: '固定報酬制 60,000円',
         working_hours: null,
         applicant_count: null,
         recruitment_count: null,
@@ -60,6 +61,7 @@ describe('UrlImportModal', () => {
     expect(formData.name).toBe('OGP案件タイトル');
     expect(formData.description).toBe('OGPの説明文');
     expect(formData.reward).toBe('60000');
+    expect(formData.reward_text).toBe('固定報酬制 60,000円');
     expect(formData.project_url).toBe('https://example.com/job/1');
     expect(notice).toEqual({ fetchStatus: 'success', warnings: [] });
   });
@@ -75,6 +77,7 @@ describe('UrlImportModal', () => {
         media: 'example.com',
         category: null,
         reward: null,
+        reward_text: null,
         working_hours: null,
         applicant_count: null,
         recruitment_count: null,
@@ -146,7 +149,7 @@ describe('UrlImportModal', () => {
     resolveFetch(jsonResponse(200, {
       data: {
         project_url: 'https://example.com/', type: 'side_job', name: 'タイトル', description: null,
-        client_name: null, media: null, category: null, reward: null, working_hours: null,
+        client_name: null, media: null, category: null, reward: null, reward_text: null, working_hours: null,
         applicant_count: null, recruitment_count: null, deadline: null, job_type: null, location: null,
         remote_type: null, employment_type: null, contract_type: null, delivery_date: null,
         fetched_at: '2026-08-22T00:00:00+00:00', fetch_status: 'success', warnings: [],

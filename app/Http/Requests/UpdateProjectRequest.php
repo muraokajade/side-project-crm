@@ -69,6 +69,7 @@ class UpdateProjectRequest extends FormRequest
             'deadline' => ['sometimes', 'nullable', 'date'],
             'fetched_at' => ['sometimes', 'nullable', 'date'],
             'reward' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'reward_text' => ['sometimes', 'nullable', 'string', 'max:255'],
             'working_hours' => ['sometimes', 'nullable', 'string', 'max:255'],
             'applicant_count' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'recruitment_count' => ['sometimes', 'nullable', 'integer', 'min:0'],

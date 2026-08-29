@@ -164,4 +164,56 @@ class ProjectApiTest extends TestCase
 
         $response->assertStatus(404);
     }
+
+    public function test_legacy_project_without_reward_text_is_returned_with_null_reward_text(): void
+    {
+        // reward_text導入前に作られた案件(rewardのみ)が、APIで壊れずに返ること。
+        $project = Project::create(['name' => '既存案件', 'reward' => 50000]);
+
+        $response = $this->getJson('/api/projects');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.0.id', $project->id)
+            ->assertJsonPath('data.0.reward', 50000)
+            ->assertJsonPath('data.0.reward_text', null);
+    }
+
+    public function test_reward_text_can_be_stored_without_a_numeric_reward(): void
+    {
+        $response = $this->postJson('/api/projects', [
+            'name' => '応相談案件',
+            'status' => '気になる',
+            'reward_text' => '応相談',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.reward_text', '応相談')
+            ->assertJsonPath('data.reward', null);
+
+        $this->assertDatabaseHas('projects', ['name' => '応相談案件', 'reward' => null, 'reward_text' => '応相談']);
+    }
+
+    public function test_updating_reward_text_does_not_clear_existing_numeric_reward(): void
+    {
+        $project = Project::create(['name' => '既存案件', 'reward' => 50000]);
+
+        $response = $this->patchJson("/api/projects/{$project->id}", [
+            'reward_text' => '固定報酬制 50,000円',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.reward', 50000)
+            ->assertJsonPath('data.reward_text', '固定報酬制 50,000円');
+    }
+
+    public function test_reward_text_longer_than_255_characters_is_rejected(): void
+    {
+        $response = $this->postJson('/api/projects', [
+            'name' => '長すぎる報酬表記の案件',
+            'status' => '気になる',
+            'reward_text' => str_repeat('あ', 256),
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('reward_text');
+    }
 }

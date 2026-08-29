@@ -16,12 +16,14 @@ class GenericHtmlExtractorTest extends TestCase
         return (new GenericHtmlExtractor())->extract(new DOMXPath($dom));
     }
 
-    public function test_extracts_ogp_when_no_json_ld_present(): void
+    public function test_extracts_name_and_media_from_ogp_but_not_description(): void
     {
+        // og:descriptionはサイト全体共通の宣伝文である可能性があるため、
+        // 「募集内容」の情報源としては採用しない(name/site_nameは引き続き使用する)。
         $html = <<<'HTML'
             <html><head>
                 <meta property="og:title" content="OGPタイトル">
-                <meta property="og:description" content="OGPの説明文です。">
+                <meta property="og:description" content="OGPの説明文です(採用されないはず)。">
                 <meta property="og:site_name" content="サンプルサイト">
             </head><body></body></html>
             HTML;
@@ -29,23 +31,24 @@ class GenericHtmlExtractorTest extends TestCase
         $result = $this->extract($html);
 
         $this->assertSame('OGPタイトル', $result['name']);
-        $this->assertSame('OGPの説明文です。', $result['description']);
+        $this->assertNull($result['description']);
         $this->assertSame('サンプルサイト', $result['media']);
     }
 
-    public function test_falls_back_to_title_and_meta_description(): void
+    public function test_falls_back_to_title_for_name_only(): void
     {
+        // meta[name=description]もdescriptionの情報源として採用しない(titleはnameのみに使う)。
         $html = <<<'HTML'
             <html><head>
                 <title>ページタイトル</title>
-                <meta name="description" content="metaディスクリプションです。">
+                <meta name="description" content="metaディスクリプションです(採用されないはず)。">
             </head><body></body></html>
             HTML;
 
         $result = $this->extract($html);
 
         $this->assertSame('ページタイトル', $result['name']);
-        $this->assertSame('metaディスクリプションです。', $result['description']);
+        $this->assertNull($result['description']);
     }
 
     public function test_json_ld_job_posting_takes_priority_over_ogp(): void
@@ -149,9 +152,9 @@ class GenericHtmlExtractorTest extends TestCase
         $result = $this->extract($html);
 
         $this->assertNull($result['reward']);
-        $this->assertNotNull($result['reward_note']);
-        $this->assertStringContainsString('50000', $result['reward_note']);
-        $this->assertStringContainsString('100000', $result['reward_note']);
+        $this->assertNotNull($result['reward_text']);
+        $this->assertStringContainsString('50000', $result['reward_text']);
+        $this->assertStringContainsString('100000', $result['reward_text']);
     }
 
     public function test_single_salary_value_is_extracted_as_reward(): void
@@ -167,7 +170,85 @@ class GenericHtmlExtractorTest extends TestCase
         $result = $this->extract($html);
 
         $this->assertSame(300000, $result['reward']);
-        $this->assertNull($result['reward_note']);
+        $this->assertSame('300000', $result['reward_text']);
+    }
+
+    public function test_hourly_salary_is_not_stored_as_reward_but_kept_with_its_unit(): void
+    {
+        // unitTextがHOUR等の期間単位の場合、その額は一括の報酬額ではないためrewardへ入れない。
+        $html = <<<'HTML'
+            <html><head>
+                <script type="application/ld+json">
+                {
+                    "@type": "JobPosting",
+                    "title": "案件",
+                    "baseSalary": {"@type": "MonetaryAmount", "currency": "JPY",
+                        "value": {"@type": "QuantitativeValue", "value": 2000, "unitText": "HOUR"}}
+                }
+                </script>
+            </head><body></body></html>
+            HTML;
+
+        $result = $this->extract($html);
+
+        $this->assertNull($result['reward']);
+        $this->assertStringContainsString('2000', $result['reward_text']);
+        $this->assertStringContainsString('HOUR', $result['reward_text']);
+    }
+
+    public function test_single_salary_reward_text_keeps_currency_and_unit_information(): void
+    {
+        // rewardへ採用する場合でも、reward_textからは通貨・単位の情報を落とさない。
+        $html = <<<'HTML'
+            <html><head>
+                <script type="application/ld+json">
+                {
+                    "@type": "JobPosting",
+                    "title": "案件",
+                    "baseSalary": {"@type": "MonetaryAmount", "currency": "JPY",
+                        "value": {"@type": "QuantitativeValue", "value": 300000}}
+                }
+                </script>
+            </head><body></body></html>
+            HTML;
+
+        $result = $this->extract($html);
+
+        $this->assertSame(300000, $result['reward']);
+        $this->assertSame('300000 JPY', $result['reward_text']);
+    }
+
+    public function test_zero_base_salary_is_not_treated_as_reward(): void
+    {
+        // baseSalaryが単純な数値0の場合(「未設定」のプレースホルダである可能性が高い)。
+        $html = <<<'HTML'
+            <html><head>
+                <script type="application/ld+json">
+                {"@type": "JobPosting", "title": "案件", "baseSalary": 0}
+                </script>
+            </head><body></body></html>
+            HTML;
+
+        $result = $this->extract($html);
+
+        $this->assertNull($result['reward']);
+        $this->assertNull($result['reward_text']);
+    }
+
+    public function test_zero_nested_salary_value_is_not_treated_as_reward(): void
+    {
+        $html = <<<'HTML'
+            <html><head>
+                <script type="application/ld+json">
+                {"@type": "JobPosting", "title": "案件", "baseSalary": {"value": {"value": 0}}}
+                </script>
+            </head><body></body></html>
+            HTML;
+
+        $result = $this->extract($html);
+
+        $this->assertNull($result['reward']);
+        $this->assertNull($result['reward_text']);
     }
 
     public function test_malformed_html_does_not_throw(): void
@@ -179,29 +260,41 @@ class GenericHtmlExtractorTest extends TestCase
         $this->assertSame('壊れたHTML', $result['name']);
     }
 
-    public function test_script_body_is_never_used_as_description(): void
+    public function test_description_is_null_when_only_meta_or_script_exist_without_json_ld(): void
     {
+        // JSON-LDが無い場合、meta descriptionやscriptの内容がdescriptionへ混入しないこと
+        // (descriptionの情報源はJSON-LD description/サイト固有DOM抽出のみ)。
         $html = <<<'HTML'
             <html><head>
                 <script>document.write('<meta name="description" content="スクリプトから注入");');</script>
-                <meta name="description" content="正しいmeta description">
+                <meta name="description" content="meta descriptionは採用されないはず">
             </head><body></body></html>
             HTML;
 
         $result = $this->extract($html);
 
-        $this->assertSame('正しいmeta description', $result['description']);
-        $this->assertStringNotContainsString('document.write', $result['description'] ?? '');
+        $this->assertNull($result['description']);
     }
 
-    public function test_description_html_tags_are_stripped_and_length_capped(): void
+    public function test_json_ld_description_strips_embedded_html_tags_without_truncating(): void
     {
-        $longText = str_repeat('あ', 2500);
-        $html = '<html><head><meta property="og:description" content="' . htmlspecialchars('<b>' . $longText . '</b>', ENT_QUOTES) . '"></head><body></body></html>';
+        // JSON-LDのdescriptionにHTMLタグが埋め込まれていても、タグ自体は除去される。
+        // 長さの打ち切り(抜粋)はこの層では行わない(UrlImportPreviewServiceの責務)。
+        $longText = str_repeat('あ', 300);
+        $descriptionJson = json_encode('<b>' . $longText . '</b>');
+        $html = <<<HTML
+            <html><head>
+                <script type="application/ld+json">
+                {"@type": "JobPosting", "title": "案件", "description": {$descriptionJson}}
+                </script>
+            </head><body></body></html>
+            HTML;
 
         $result = $this->extract($html);
 
         $this->assertStringNotContainsString('<b>', $result['description']);
-        $this->assertLessThanOrEqual(2001, mb_strlen($result['description']));
+        $this->assertStringNotContainsString('</b>', $result['description']);
+        // 打ち切られず、300文字分の本文がそのまま残っていること。
+        $this->assertSame(300, mb_strlen($result['description']));
     }
 }

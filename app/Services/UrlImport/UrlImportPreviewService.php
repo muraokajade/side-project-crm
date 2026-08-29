@@ -11,6 +11,12 @@ use Throwable;
  */
 class UrlImportPreviewService
 {
+    /**
+     * 「募集内容(抜粋)」の最大文字数。AIによる要約は行わず、案件固有本文の
+     * 先頭からの機械的な文字数打ち切りのみを行う。
+     */
+    private const DESCRIPTION_EXCERPT_LENGTH = 160;
+
     public function __construct(
         private readonly SafeHtmlFetcher $fetcher,
         private readonly GenericHtmlExtractor $genericExtractor,
@@ -31,11 +37,10 @@ class UrlImportPreviewService
         [$merged, $warnings] = $this->extractFields($fetched['html'], $host, $path);
 
         $name = $merged['name'] ?? null;
-        $description = $merged['description'] ?? null;
+        $description = $this->excerptDescription($merged['description'] ?? null);
 
-        if (! empty($merged['reward_note'])) {
-            $description = trim(($description !== null ? $description . "\n\n" : '') . $merged['reward_note']);
-            $warnings[] = '報酬をレンジ表記等のため自動入力できませんでした。概要をご確認のうえ入力してください。';
+        if ($description === null) {
+            $warnings[] = '募集内容を取得できませんでした。確認して入力してください。';
         }
 
         if ($name === null) {
@@ -55,6 +60,7 @@ class UrlImportPreviewService
             'media' => $media,
             'category' => $merged['category'] ?? null,
             'reward' => $merged['reward'] ?? null,
+            'reward_text' => $merged['reward_text'] ?? null,
             'working_hours' => $merged['working_hours'] ?? null,
             'applicant_count' => $merged['applicant_count'] ?? null,
             'recruitment_count' => $merged['recruitment_count'] ?? null,
@@ -69,6 +75,23 @@ class UrlImportPreviewService
             'fetch_status' => $name !== null ? 'success' : 'partial',
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * 案件固有本文(JSON-LD description、またはサイト固有DOM抽出)から得られた
+     * descriptionを、要約せず先頭から機械的に指定文字数で打ち切る。
+     */
+    private function excerptDescription(?string $text): ?string
+    {
+        if ($text === null || $text === '') {
+            return null;
+        }
+
+        if (mb_strlen($text) <= self::DESCRIPTION_EXCERPT_LENGTH) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, self::DESCRIPTION_EXCERPT_LENGTH) . '…';
     }
 
     /**

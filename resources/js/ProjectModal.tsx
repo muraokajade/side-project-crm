@@ -158,8 +158,8 @@ export default function ProjectModal({
               {fieldError('project_url') && <p className="text-red-600 text-xs mt-1">{fieldError('project_url')}</p>}
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">概要</label>
-              <textarea name="description" value={form.description} onChange={handleChange} rows={3}
+              <label htmlFor="description" className="block text-sm font-medium text-slate-700 mb-1">募集内容（抜粋）</label>
+              <textarea id="description" name="description" value={form.description} onChange={handleChange} rows={3}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
               {fieldError('description') && <p className="text-red-600 text-xs mt-1">{fieldError('description')}</p>}
             </div>
@@ -176,10 +176,11 @@ export default function ProjectModal({
               {fieldError('deadline') && <p className="text-red-600 text-xs mt-1">{fieldError('deadline')}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">報酬（円）</label>
-              <input type="number" name="reward" value={form.reward} onChange={handleChange}
+              <label htmlFor="reward_text" className="block text-sm font-medium text-slate-700 mb-1">報酬</label>
+              <input id="reward_text" type="text" name="reward_text" value={form.reward_text} onChange={handleChange}
+                placeholder="例: 80,000円 / 時給2,000円 / 応相談"
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
-              {fieldError('reward') && <p className="text-red-600 text-xs mt-1">{fieldError('reward')}</p>}
+              {fieldError('reward_text') && <p className="text-red-600 text-xs mt-1">{fieldError('reward_text')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">稼働時間</label>

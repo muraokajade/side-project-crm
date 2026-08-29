@@ -389,13 +389,13 @@ class UrlImportPreviewApiTest extends TestCase
 
     // ---- 抽出結果の組み立て -----------------------------------------------
 
-    public function test_ogp_extraction_end_to_end(): void
+    public function test_ogp_title_is_used_but_ogp_description_is_not(): void
     {
         $this->fakeDns(['example.com' => ['8.8.8.8']]);
         Http::fake(['*' => Http::response(
             '<html><head>'
                 . '<meta property="og:title" content="OGP案件タイトル">'
-                . '<meta property="og:description" content="OGPの説明文">'
+                . '<meta property="og:description" content="サイト共通の宣伝文(採用されないはず)">'
                 . '</head></html>',
             200,
             ['Content-Type' => 'text/html']
@@ -405,9 +405,48 @@ class UrlImportPreviewApiTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('data.name', 'OGP案件タイトル')
-            ->assertJsonPath('data.description', 'OGPの説明文')
-            ->assertJsonPath('data.fetch_status', 'success')
-            ->assertJsonPath('data.warnings', []);
+            ->assertJsonPath('data.description', null)
+            ->assertJsonPath('data.fetch_status', 'success');
+
+        $this->assertContains(
+            '募集内容を取得できませんでした。確認して入力してください。',
+            $response->json('data.warnings')
+        );
+    }
+
+    public function test_description_is_excerpted_to_160_characters(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        $longBody = str_repeat('あ', 200);
+        $html = '<html><head><script type="application/ld+json">'
+            . json_encode(['@type' => 'JobPosting', 'title' => '長文案件', 'description' => $longBody])
+            . '</script></head></html>';
+
+        Http::fake(['*' => Http::response($html, 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/job/2']);
+
+        $description = $response->json('data.description');
+
+        $response->assertStatus(200);
+        $this->assertSame(161, mb_strlen($description)); // 160文字 + 省略記号'…'
+        $this->assertStringEndsWith('…', $description);
+    }
+
+    public function test_zero_reward_from_json_ld_is_not_saved_end_to_end(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        $html = '<html><head><script type="application/ld+json">'
+            . json_encode(['@type' => 'JobPosting', 'title' => '案件', 'baseSalary' => 0])
+            . '</script></head></html>';
+
+        Http::fake(['*' => Http::response($html, 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/job/3']);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.reward', null)
+            ->assertJsonPath('data.reward_text', null);
     }
 
     public function test_json_ld_job_posting_extraction_end_to_end(): void
@@ -461,9 +500,36 @@ class UrlImportPreviewApiTest extends TestCase
             ->assertJsonPath('data.name', 'CrowdWorks案件')
             ->assertJsonPath('data.media', 'CrowdWorks')
             ->assertJsonPath('data.reward', 60000)
+            ->assertJsonPath('data.reward_text', '固定報酬制 60,000円')
+            ->assertJsonPath('data.description', '案件本文です。')
             ->assertJsonPath('data.category', 'Web開発');
 
         $this->assertStringNotContainsString('関連案件', $response->json('data.name'));
+    }
+
+    public function test_crowdworks_negotiable_reward_is_preserved_as_reward_text_end_to_end(): void
+    {
+        $this->fakeDns(['crowdworks.jp' => ['8.8.8.8']]);
+        $html = <<<'HTML'
+            <html><body>
+                <article class="job-detail">
+                    <h1 class="job-detail__title">CrowdWorks応相談案件</h1>
+                    <div class="job-detail__reward">応相談</div>
+                    <div class="job-detail__body">案件本文です。</div>
+                </article>
+            </body></html>
+            HTML;
+
+        Http::fake(['*' => Http::response($html, 200, ['Content-Type' => 'text/html'])]);
+
+        $response = $this->postJson('/api/import/preview', [
+            'url' => 'https://crowdworks.jp/public/jobs/999999',
+            'type' => 'side_job',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.reward', null)
+            ->assertJsonPath('data.reward_text', '応相談');
     }
 
     public function test_insufficient_extraction_returns_partial_with_warnings(): void

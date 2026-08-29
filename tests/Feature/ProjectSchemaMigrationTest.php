@@ -6,6 +6,7 @@ use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class ProjectSchemaMigrationTest extends TestCase
@@ -75,6 +76,50 @@ class ProjectSchemaMigrationTest extends TestCase
 
         // 「見送り」は不採用/辞退のどちらが元か一意に復元できないため、変更されないままである。
         $this->assertDatabaseHas('projects', ['name' => '見送り案件', 'status' => '見送り']);
+    }
+
+    public function test_reward_text_column_is_added_as_nullable_without_touching_existing_rows(): void
+    {
+        $migration = require database_path('migrations/2026_08_27_000000_add_reward_text_to_projects_table.php');
+
+        DB::table('projects')->insert([
+            // 既存(reward_text導入前)相当のデータ。rewardのみを持つ。
+            ['name' => '既存案件(報酬あり)', 'reward' => 80000, 'status' => '応募済み', 'created_at' => now(), 'updated_at' => now()],
+            ['name' => '既存案件(報酬なし)', 'reward' => null, 'status' => '気になる', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // 導入前の状態へ戻してから再適用し、既存行が失われないことを確認する。
+        $migration->down();
+        $this->assertFalse(Schema::hasColumn('projects', 'reward_text'));
+        $this->assertSame(2, DB::table('projects')->count());
+
+        $migration->up();
+
+        $this->assertTrue(Schema::hasColumn('projects', 'reward_text'));
+        $this->assertSame(2, DB::table('projects')->count());
+
+        // 既存rewardは保持され、reward_textはNULL(0円や空文字で埋めない)。
+        $withReward = DB::table('projects')->where('name', '既存案件(報酬あり)')->first();
+        $this->assertSame(80000, (int) $withReward->reward);
+        $this->assertNull($withReward->reward_text);
+
+        $withoutReward = DB::table('projects')->where('name', '既存案件(報酬なし)')->first();
+        $this->assertNull($withoutReward->reward);
+        $this->assertNull($withoutReward->reward_text);
+    }
+
+    public function test_reward_text_round_trips_independently_of_numeric_reward(): void
+    {
+        // 「応相談」のように数値化できない表記でも、rewardを0で埋めずreward_textだけを保持できる。
+        $project = Project::create([
+            'name' => '応相談案件',
+            'reward_text' => '応相談',
+        ]);
+
+        $stored = $project->refresh();
+
+        $this->assertNull($stored->reward);
+        $this->assertSame('応相談', $stored->reward_text);
     }
 
     public function test_soft_delete_excludes_project_from_default_queries_but_keeps_row(): void

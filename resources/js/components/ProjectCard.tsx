@@ -29,6 +29,17 @@ function isSafeExternalUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
 
+/**
+ * 報酬表示はreward_text(ページ上の表記、例: 「応相談」)を優先する。
+ * reward_textが空でreward(数値)があればそれを表示し、どちらも無ければ「未掲載」とする
+ * (0円・推測値へは変換しない)。
+ */
+function rewardDisplay(p: Project): string {
+  if (p.reward_text) return p.reward_text;
+  if (p.reward !== null) return `${Number(p.reward).toLocaleString('ja-JP')}円`;
+  return '未掲載';
+}
+
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
   return (
@@ -86,7 +97,7 @@ export default function ProjectCard({
 
       {expanded && (
         <div className="px-4 py-4 border-t border-slate-100 space-y-3">
-          <Field label="概要" value={p.description} />
+          <Field label="募集内容（抜粋）" value={p.description} />
           {p.project_url && (
             <div>
               <p className="text-xs text-slate-400">URL</p>
@@ -105,6 +116,7 @@ export default function ProjectCard({
             </div>
           )}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="報酬" value={rewardDisplay(p)} />
             <Field label="媒体" value={p.media} />
             <Field label="カテゴリ" value={p.category} />
             <Field label="応募日" value={p.applied_date?.slice(0, 10)} />

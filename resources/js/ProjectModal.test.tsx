@@ -9,12 +9,12 @@ describe('ProjectModal', () => {
         open
         mode="create"
         project={null}
-        errors={{ reward: ['The reward field must be at least 0.'] }}
+        errors={{ reward_text: ['The reward text field must not be greater than 255 characters.'] }}
         onClose={() => {}}
         onSubmit={() => {}}
       />
     );
-    expect(screen.getByText('The reward field must be at least 0.')).toBeInTheDocument();
+    expect(screen.getByText('The reward text field must not be greater than 255 characters.')).toBeInTheDocument();
   });
 
   it('複数フィールドのエラーをそれぞれ表示する', () => {
@@ -166,6 +166,22 @@ describe('ProjectModal', () => {
       <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
     );
     expect(screen.queryByText('優先度')).not.toBeInTheDocument();
+  });
+
+  it('報酬はreward_textを自由テキストで編集できる', () => {
+    render(
+      <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
+    );
+    const rewardInput = screen.getByLabelText('報酬') as HTMLInputElement;
+    fireEvent.change(rewardInput, { target: { value: '応相談' } });
+    expect(rewardInput.value).toBe('応相談');
+  });
+
+  it('募集内容の入力欄ラベルは「募集内容（抜粋）」である', () => {
+    render(
+      <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
+    );
+    expect(screen.getByLabelText('募集内容（抜粋）')).toBeInTheDocument();
   });
 
   it('fetch_status=partialとwarningsがある場合、注意バナーを表示する', () => {
