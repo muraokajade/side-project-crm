@@ -45,11 +45,20 @@ function jsonResponse(status: number, body: unknown): Response {
   return { status, json: async () => body } as Response;
 }
 
+const AUTH_USER = { id: 1, name: 'モニターA', email: 'a@example.com' };
+
 describe('AppRoot', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     fetchMock = vi.fn((url: string) => {
+      // 既存の一覧・検索テストはログイン済みを前提とする。
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve(jsonResponse(200, { data: AUTH_USER }));
+      }
+      if (url.includes('/api/auth/logout')) {
+        return Promise.resolve(jsonResponse(200, { data: null }));
+      }
       if (url.includes('/api/projects/trash')) {
         return Promise.resolve(jsonResponse(200, { data: [] }));
       }
@@ -150,5 +159,70 @@ describe('AppRoot', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ゴミ箱' }));
 
     await waitFor(() => expect(screen.getByText('削除済み案件')).toBeInTheDocument());
+  });
+
+  it('未ログイン(/api/auth/meが401)ならログイン画面を表示し、案件APIを呼ばない', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/auth/me')) return Promise.resolve(jsonResponse(401, { message: 'Unauthenticated.' }));
+      return Promise.resolve(jsonResponse(200, { data: [] }));
+    });
+
+    render(<AppRoot />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument());
+
+    // 案件一覧APIは一度も呼ばれない。
+    const calledProjects = fetchMock.mock.calls.some(call => String(call[0]).includes('/api/projects'));
+    expect(calledProjects).toBe(false);
+  });
+
+  it('未ログインでは案件データやヘッダー操作を一切表示しない', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/auth/me')) return Promise.resolve(jsonResponse(401, { message: 'Unauthenticated.' }));
+      return Promise.resolve(jsonResponse(200, { data: [makeProject({ name: '見えてはいけない案件' })] }));
+    });
+
+    render(<AppRoot />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument());
+
+    expect(screen.queryByText('見えてはいけない案件')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '手入力' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ゴミ箱' })).not.toBeInTheDocument();
+  });
+
+  it('ログイン済みならログインユーザーのメールとログアウトボタンを表示する', async () => {
+    render(<AppRoot />);
+
+    await waitFor(() => expect(screen.getByText('a@example.com')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'ログアウト' })).toBeInTheDocument();
+  });
+
+  it('ログアウトするとログイン画面へ戻り、前ユーザーの案件が画面に残らない', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/auth/me')) return Promise.resolve(jsonResponse(200, { data: AUTH_USER }));
+      if (url.includes('/api/auth/logout')) return Promise.resolve(jsonResponse(200, { data: null }));
+      return Promise.resolve(jsonResponse(200, { data: [makeProject({ name: 'Aの案件' })] }));
+    });
+
+    render(<AppRoot />);
+    await waitFor(() => expect(screen.getByText('Aの案件')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'ログアウト' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument());
+    expect(screen.queryByText('Aの案件')).not.toBeInTheDocument();
+  });
+
+  it('一覧取得が401になった場合はログイン画面へ戻す(セッション切れ)', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/auth/me')) return Promise.resolve(jsonResponse(200, { data: AUTH_USER }));
+      if (url.includes('/api/projects')) return Promise.resolve(jsonResponse(401, { message: 'Unauthenticated.' }));
+      return Promise.resolve(jsonResponse(200, { data: [] }));
+    });
+
+    render(<AppRoot />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument());
   });
 });

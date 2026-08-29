@@ -16,7 +16,8 @@ class ProjectController extends Controller
             'type' => ['sometimes', 'string', 'in:career,side_job'],
         ]);
 
-        $query = Project::query();
+        // ログインユーザー所有のProjectだけを対象にする(他ユーザーのデータは混ざらない)。
+        $query = Project::query()->ownedBy($request->user()->id);
 
         if ($type = $request->input('type')) {
             $query->where('type', $type);
@@ -44,7 +45,9 @@ class ProjectController extends Controller
     public function store(StoreProjectRequest $request)
     {
         $validated = $request->validated();
-        $project = Project::create($validated);
+
+        // user_idはリクエスト値ではなくログインユーザーから決定する(所有者の偽装を防ぐ)。
+        $project = $request->user()->projects()->create($validated);
 
         // typeなど省略可能な項目はDB側のデフォルト値が適用されるが、
         // create()直後のインメモリなモデルにはその値が反映されていないため再取得する。
@@ -53,16 +56,31 @@ class ProjectController extends Controller
 
     public function update(UpdateProjectRequest $request, Project $project)
     {
+        $this->authorizeOwner($request, $project);
+
         $validated = $request->validated();
         $project->update($validated);
 
         return new ProjectResource($project->fresh());
     }
 
-    public function destroy(Project $project)
+    public function destroy(Request $request, Project $project)
     {
+        $this->authorizeOwner($request, $project);
+
         $project->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * 他ユーザーのProjectには404を返す。403にすると「そのIDのProjectは存在する」ことが
+     * 伝わってしまうため、存在自体を秘匿する。
+     */
+    private function authorizeOwner(Request $request, Project $project): void
+    {
+        if ($project->user_id !== $request->user()->id) {
+            abort(404);
+        }
     }
 }

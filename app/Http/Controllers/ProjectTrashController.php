@@ -20,7 +20,8 @@ class ProjectTrashController extends Controller
             'type' => ['sometimes', 'string', 'in:career,side_job'],
         ]);
 
-        $query = Project::onlyTrashed();
+        // ログインユーザー所有のProjectだけを対象にする。
+        $query = Project::onlyTrashed()->ownedBy($request->user()->id);
 
         if ($type = $request->input('type')) {
             $query->where('type', $type);
@@ -39,13 +40,9 @@ class ProjectTrashController extends Controller
         return ProjectResource::collection($projects);
     }
 
-    public function restore(int $id)
+    public function restore(Request $request, int $id)
     {
-        $project = Project::withTrashed()->find($id);
-
-        if ($project === null) {
-            abort(404);
-        }
+        $project = $this->findOwnedTrashable($request, $id);
 
         if (! $project->trashed()) {
             return response()->json([
@@ -59,13 +56,9 @@ class ProjectTrashController extends Controller
         return new ProjectResource($project);
     }
 
-    public function forceDelete(int $id)
+    public function forceDelete(Request $request, int $id)
     {
-        $project = Project::withTrashed()->find($id);
-
-        if ($project === null) {
-            abort(404);
-        }
+        $project = $this->findOwnedTrashable($request, $id);
 
         if (! $project->trashed()) {
             return response()->json([
@@ -77,5 +70,20 @@ class ProjectTrashController extends Controller
         $project->forceDelete();
 
         return response()->noContent();
+    }
+
+    /**
+     * 論理削除済みを含めて取得しつつ、所有者がログインユーザーでなければ404にする
+     * (他ユーザーのProject IDを直接指定しても復元・完全削除できない)。
+     */
+    private function findOwnedTrashable(Request $request, int $id): Project
+    {
+        $project = Project::withTrashed()->ownedBy($request->user()->id)->find($id);
+
+        if ($project === null) {
+            abort(404);
+        }
+
+        return $project;
     }
 }

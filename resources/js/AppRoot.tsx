@@ -6,6 +6,8 @@ import ProjectModal, { ProjectModalNotice } from './ProjectModal';
 import ProjectCard from './components/ProjectCard';
 import UrlImportModal from './components/UrlImportModal';
 import TrashView from './components/TrashView';
+import AuthScreen from './components/AuthScreen';
+import { AuthUser, fetchMe, logout as logoutRequest } from './api/auth';
 
 type TypeFilter = 'all' | ProjectType;
 
@@ -18,6 +20,10 @@ const TYPE_TABS: { value: TypeFilter; label: string }[] = [
 const SEARCH_DEBOUNCE_MS = 400;
 
 function AppRoot() {
+  // 認証状態が確定するまでは案件データを一切取得・描画しない。
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
   const [view, setView] = useState<'list' | 'trash'>('list');
   const [projects, setProjects] = useState<Project[]>([]);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
@@ -38,16 +44,54 @@ function AppRoot() {
   const isSubmittingRef = useRef(false);
   const deletingIdsRef = useRef<Set<number>>(new Set());
 
+  // 初回マウント時にログイン状態を確認する。
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetchMe();
+        setAuthUser(res.status === 200 ? (await res.json()).data : null);
+      } catch {
+        setAuthUser(null);
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, []);
+
   const fetchProjects = async () => {
     const params = new URLSearchParams();
     if (typeFilter !== 'all') params.set('type', typeFilter);
     if (appliedSearch) params.set('keyword', appliedSearch);
     const res = await listProjects(params);
+
+    // セッション切れ(ログアウト・期限切れ)の場合はログイン画面へ戻す。
+    if (res.status === 401) {
+      setAuthUser(null);
+      setProjects([]);
+      return;
+    }
+
     const json = await res.json();
     setProjects(json.data ?? []);
   };
 
-  useEffect(() => { fetchProjects(); }, [typeFilter, appliedSearch]);
+  useEffect(() => {
+    if (!authUser) return;
+    fetchProjects();
+  }, [authUser, typeFilter, appliedSearch]);
+
+  const handleLogout = async () => {
+    try {
+      await logoutRequest();
+    } finally {
+      // 前ユーザーのデータが画面に残らないよう、状態を明示的に空へ戻す。
+      setAuthUser(null);
+      setProjects([]);
+      setView('list');
+      setSearchInput('');
+      setAppliedSearch('');
+    }
+  };
 
   // 入力のたびに毎回APIへ問い合わせない(過剰通信防止)ためのdebounce。
   useEffect(() => {
@@ -194,6 +238,15 @@ function AppRoot() {
     setModalOpen(true);
   };
 
+  // ログイン状態の確認が終わるまでは何も出さない(未ログイン時に一瞬でも一覧を見せないため)。
+  if (!authChecked) {
+    return <div className="min-h-screen bg-slate-50" />;
+  }
+
+  if (!authUser) {
+    return <AuthScreen onAuthenticated={setAuthUser} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
@@ -212,6 +265,11 @@ function AppRoot() {
             <button onClick={() => setView('trash')}
               className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
               ゴミ箱
+            </button>
+            <span className="text-sm text-slate-500 ml-1">{authUser.email}</span>
+            <button onClick={handleLogout}
+              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
+              ログアウト
             </button>
           </div>
         </div>

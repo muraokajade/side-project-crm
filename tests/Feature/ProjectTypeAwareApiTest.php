@@ -2,12 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\Project;
 use App\Support\ProjectStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 
-class ProjectTypeAwareApiTest extends TestCase
+class ProjectTypeAwareApiTest extends AuthenticatedApiTestCase
 {
     use RefreshDatabase;
 
@@ -137,7 +135,7 @@ class ProjectTypeAwareApiTest extends TestCase
 
     public function test_update_without_type_keeps_existing_type_and_validates_status_accordingly(): void
     {
-        $project = Project::create([
+        $project = $this->createProject([
             'type' => 'career',
             'name' => '転職案件',
             'status' => '気になる',
@@ -156,7 +154,7 @@ class ProjectTypeAwareApiTest extends TestCase
 
     public function test_update_without_type_rejects_status_invalid_for_existing_type(): void
     {
-        $project = Project::create([
+        $project = $this->createProject([
             'type' => 'career',
             'name' => '転職案件2',
             'status' => '気になる',
@@ -174,7 +172,7 @@ class ProjectTypeAwareApiTest extends TestCase
 
     public function test_update_does_not_overwrite_omitted_fields(): void
     {
-        $project = Project::create([
+        $project = $this->createProject([
             'name' => '既存項目維持確認案件',
             'status' => '気になる',
             'memo' => '重要なメモ',
@@ -237,8 +235,8 @@ class ProjectTypeAwareApiTest extends TestCase
 
     public function test_can_filter_by_type(): void
     {
-        Project::create(['type' => 'career', 'name' => '転職案件A', 'status' => '気になる']);
-        Project::create(['type' => 'side_job', 'name' => '副業案件A', 'status' => '気になる']);
+        $this->createProject(['type' => 'career', 'name' => '転職案件A', 'status' => '気になる']);
+        $this->createProject(['type' => 'side_job', 'name' => '副業案件A', 'status' => '気になる']);
 
         $response = $this->getJson('/api/projects?type=career');
         $response->assertStatus(200)
@@ -260,9 +258,9 @@ class ProjectTypeAwareApiTest extends TestCase
 
     public function test_can_search_by_description_and_client_name(): void
     {
-        Project::create(['name' => '案件A', 'status' => '気になる', 'client_name' => 'サンプル株式会社']);
-        Project::create(['name' => '案件B', 'status' => '気になる', 'description' => 'Reactを使った開発']);
-        Project::create(['name' => '案件C', 'status' => '気になる']);
+        $this->createProject(['name' => '案件A', 'status' => '気になる', 'client_name' => 'サンプル株式会社']);
+        $this->createProject(['name' => '案件B', 'status' => '気になる', 'description' => 'Reactを使った開発']);
+        $this->createProject(['name' => '案件C', 'status' => '気になる']);
 
         $response = $this->getJson('/api/projects?keyword=' . urlencode('サンプル株式会社'));
         $response->assertStatus(200)
@@ -277,10 +275,10 @@ class ProjectTypeAwareApiTest extends TestCase
 
     public function test_soft_deleted_project_is_excluded_from_index(): void
     {
-        $deleted = Project::create(['name' => '削除済み案件', 'status' => '気になる']);
+        $deleted = $this->createProject(['name' => '削除済み案件', 'status' => '気になる']);
         $deleted->delete();
 
-        Project::create(['name' => '通常案件', 'status' => '気になる']);
+        $this->createProject(['name' => '通常案件', 'status' => '気になる']);
 
         $response = $this->getJson('/api/projects');
 

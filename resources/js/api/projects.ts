@@ -1,12 +1,23 @@
 /**
+ * blade側の<meta name="csrf-token">からCSRFトークンを読む。
+ * APIはセッション認証(webミドルウェア)を通るため、更新系リクエストで必要になる。
+ */
+function csrfToken(): string {
+  return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+}
+
+/**
  * fetch呼び出しの共通ヘッダー付与だけを担う薄いラッパー。ステータス分岐は呼び出し側(AppRoot等)が行う。
  */
-function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
   return fetch(url, {
     ...options,
+    // セッションCookieを必ず送る(未指定だとブラウザ既定に依存するため明示する)。
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      'X-CSRF-TOKEN': csrfToken(),
       ...options.headers,
     },
   });

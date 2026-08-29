@@ -2,11 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 
-class ProjectApiTest extends TestCase
+class ProjectApiTest extends AuthenticatedApiTestCase
 {
     use RefreshDatabase;
 
@@ -52,9 +50,9 @@ class ProjectApiTest extends TestCase
 
     public function test_can_list_projects(): void
     {
-        Project::create(['name' => '案件A', 'status' => '未応募']);
-        Project::create(['name' => '案件B', 'status' => '応募済み']);
-        Project::create(['name' => '案件C', 'status' => '完了']);
+        $this->createProject(['name' => '案件A', 'status' => '未応募']);
+        $this->createProject(['name' => '案件B', 'status' => '応募済み']);
+        $this->createProject(['name' => '案件C', 'status' => '完了']);
 
         $response = $this->getJson('/api/projects');
 
@@ -64,9 +62,9 @@ class ProjectApiTest extends TestCase
 
     public function test_can_search_by_keyword(): void
     {
-        Project::create(['name' => 'Laravel開発案件', 'status' => '未応募', 'memo' => '']);
-        Project::create(['name' => 'デザイン案件', 'status' => '未応募', 'memo' => 'Reactを使用']);
-        Project::create(['name' => 'ライティング', 'status' => '未応募', 'memo' => '']);
+        $this->createProject(['name' => 'Laravel開発案件', 'status' => '未応募', 'memo' => '']);
+        $this->createProject(['name' => 'デザイン案件', 'status' => '未応募', 'memo' => 'Reactを使用']);
+        $this->createProject(['name' => 'ライティング', 'status' => '未応募', 'memo' => '']);
 
         $response = $this->getJson('/api/projects?keyword=Laravel');
 
@@ -84,9 +82,9 @@ class ProjectApiTest extends TestCase
 
     public function test_can_filter_by_status(): void
     {
-        Project::create(['name' => '案件A', 'status' => '未応募']);
-        Project::create(['name' => '案件B', 'status' => '応募済み']);
-        Project::create(['name' => '案件C', 'status' => '未応募']);
+        $this->createProject(['name' => '案件A', 'status' => '未応募']);
+        $this->createProject(['name' => '案件B', 'status' => '応募済み']);
+        $this->createProject(['name' => '案件C', 'status' => '未応募']);
 
         $response = $this->getJson('/api/projects?status=' . urlencode('未応募'));
 
@@ -102,9 +100,9 @@ class ProjectApiTest extends TestCase
 
     public function test_can_filter_by_media(): void
     {
-        Project::create(['name' => '案件A', 'status' => '未応募', 'media' => 'CrowdWorks']);
-        Project::create(['name' => '案件B', 'status' => '未応募', 'media' => 'MENTA']);
-        Project::create(['name' => '案件C', 'status' => '未応募', 'media' => 'CrowdWorks']);
+        $this->createProject(['name' => '案件A', 'status' => '未応募', 'media' => 'CrowdWorks']);
+        $this->createProject(['name' => '案件B', 'status' => '未応募', 'media' => 'MENTA']);
+        $this->createProject(['name' => '案件C', 'status' => '未応募', 'media' => 'CrowdWorks']);
 
         $response = $this->getJson('/api/projects?media=CrowdWorks');
 
@@ -120,7 +118,7 @@ class ProjectApiTest extends TestCase
 
     public function test_can_update_project(): void
     {
-        $project = Project::create([
+        $project = $this->createProject([
             'name' => '元の案件名',
             'status' => '未応募',
         ]);
@@ -145,7 +143,7 @@ class ProjectApiTest extends TestCase
 
     public function test_can_delete_project(): void
     {
-        $project = Project::create([
+        $project = $this->createProject([
             'name' => '削除対象案件',
             'status' => '未応募',
         ]);
@@ -168,7 +166,7 @@ class ProjectApiTest extends TestCase
     public function test_legacy_project_without_reward_text_is_returned_with_null_reward_text(): void
     {
         // reward_text導入前に作られた案件(rewardのみ)が、APIで壊れずに返ること。
-        $project = Project::create(['name' => '既存案件', 'reward' => 50000]);
+        $project = $this->createProject(['name' => '既存案件', 'reward' => 50000]);
 
         $response = $this->getJson('/api/projects');
 
@@ -195,7 +193,7 @@ class ProjectApiTest extends TestCase
 
     public function test_updating_reward_text_does_not_clear_existing_numeric_reward(): void
     {
-        $project = Project::create(['name' => '既存案件', 'reward' => 50000]);
+        $project = $this->createProject(['name' => '既存案件', 'reward' => 50000]);
 
         $response = $this->patchJson("/api/projects/{$project->id}", [
             'reward_text' => '固定報酬制 50,000円',

@@ -5,9 +5,8 @@ namespace Tests\Feature;
 use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Tests\TestCase;
 
-class ProjectTrashApiTest extends TestCase
+class ProjectTrashApiTest extends AuthenticatedApiTestCase
 {
     use RefreshDatabase;
 
@@ -15,7 +14,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_destroy_sets_deleted_at(): void
     {
-        $project = Project::create(['name' => '削除対象案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '削除対象案件', 'status' => '気になる']);
 
         $response = $this->deleteJson("/api/projects/{$project->id}");
 
@@ -25,7 +24,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_deleted_project_excluded_from_index(): void
     {
-        $project = Project::create(['name' => '削除対象案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '削除対象案件', 'status' => '気になる']);
         $project->delete();
 
         $response = $this->getJson('/api/projects');
@@ -37,9 +36,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_index_returns_only_trashed(): void
     {
-        $trashed = Project::create(['name' => '削除済み案件', 'status' => '気になる']);
+        $trashed = $this->createProject(['name' => '削除済み案件', 'status' => '気になる']);
         $trashed->delete();
-        Project::create(['name' => '通常案件', 'status' => '気になる']);
+        $this->createProject(['name' => '通常案件', 'status' => '気になる']);
 
         $response = $this->getJson('/api/projects/trash');
 
@@ -51,11 +50,11 @@ class ProjectTrashApiTest extends TestCase
     public function test_trash_index_ordered_by_deleted_at_desc(): void
     {
         Carbon::setTestNow('2026-08-01 10:00:00');
-        $older = Project::create(['name' => '古い削除案件', 'status' => '気になる']);
+        $older = $this->createProject(['name' => '古い削除案件', 'status' => '気になる']);
         $older->delete();
 
         Carbon::setTestNow('2026-08-02 10:00:00');
-        $newer = Project::create(['name' => '新しい削除案件', 'status' => '気になる']);
+        $newer = $this->createProject(['name' => '新しい削除案件', 'status' => '気になる']);
         $newer->delete();
 
         Carbon::setTestNow();
@@ -69,9 +68,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_index_filters_by_type(): void
     {
-        $career = Project::create(['name' => 'キャリア案件', 'type' => 'career', 'status' => '内定']);
+        $career = $this->createProject(['name' => 'キャリア案件', 'type' => 'career', 'status' => '内定']);
         $career->delete();
-        $sideJob = Project::create(['name' => '副業案件', 'type' => 'side_job', 'status' => '気になる']);
+        $sideJob = $this->createProject(['name' => '副業案件', 'type' => 'side_job', 'status' => '気になる']);
         $sideJob->delete();
 
         $response = $this->getJson('/api/projects/trash?type=career');
@@ -83,9 +82,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_index_filters_by_status(): void
     {
-        $completed = Project::create(['name' => '完了案件', 'status' => '完了']);
+        $completed = $this->createProject(['name' => '完了案件', 'status' => '完了']);
         $completed->delete();
-        $rejected = Project::create(['name' => '見送り案件', 'status' => '見送り']);
+        $rejected = $this->createProject(['name' => '見送り案件', 'status' => '見送り']);
         $rejected->delete();
 
         $response = $this->getJson('/api/projects/trash?status=' . urlencode('完了'));
@@ -97,9 +96,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_index_searches_by_name(): void
     {
-        $match = Project::create(['name' => 'Laravel開発案件', 'status' => '気になる']);
+        $match = $this->createProject(['name' => 'Laravel開発案件', 'status' => '気になる']);
         $match->delete();
-        $other = Project::create(['name' => 'デザイン案件', 'status' => '気になる']);
+        $other = $this->createProject(['name' => 'デザイン案件', 'status' => '気になる']);
         $other->delete();
 
         $response = $this->getJson('/api/projects/trash?search=Laravel');
@@ -111,9 +110,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_index_searches_by_client_name(): void
     {
-        $match = Project::create(['name' => '案件A', 'client_name' => '株式会社サンプル', 'status' => '気になる']);
+        $match = $this->createProject(['name' => '案件A', 'client_name' => '株式会社サンプル', 'status' => '気になる']);
         $match->delete();
-        $other = Project::create(['name' => '案件B', 'client_name' => '別会社', 'status' => '気になる']);
+        $other = $this->createProject(['name' => '案件B', 'client_name' => '別会社', 'status' => '気になる']);
         $other->delete();
 
         $response = $this->getJson('/api/projects/trash?search=' . urlencode('サンプル'));
@@ -125,9 +124,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_index_searches_by_description(): void
     {
-        $match = Project::create(['name' => '案件A', 'description' => 'Reactを使用した開発', 'status' => '気になる']);
+        $match = $this->createProject(['name' => '案件A', 'description' => 'Reactを使用した開発', 'status' => '気になる']);
         $match->delete();
-        $other = Project::create(['name' => '案件B', 'description' => 'ライティング業務', 'status' => '気になる']);
+        $other = $this->createProject(['name' => '案件B', 'description' => 'ライティング業務', 'status' => '気になる']);
         $other->delete();
 
         $response = $this->getJson('/api/projects/trash?search=React');
@@ -139,9 +138,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_index_searches_by_memo(): void
     {
-        $match = Project::create(['name' => '案件A', 'memo' => '要注意メモ', 'status' => '気になる']);
+        $match = $this->createProject(['name' => '案件A', 'memo' => '要注意メモ', 'status' => '気になる']);
         $match->delete();
-        $other = Project::create(['name' => '案件B', 'memo' => '', 'status' => '気になる']);
+        $other = $this->createProject(['name' => '案件B', 'memo' => '', 'status' => '気になる']);
         $other->delete();
 
         $response = $this->getJson('/api/projects/trash?search=' . urlencode('要注意'));
@@ -162,7 +161,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_restore_succeeds(): void
     {
-        $project = Project::create(['name' => '復元対象案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '復元対象案件', 'status' => '気になる']);
         $project->delete();
 
         $response = $this->postJson("/api/projects/{$project->id}/restore");
@@ -173,7 +172,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_restored_project_appears_in_index_again(): void
     {
-        $project = Project::create(['name' => '復元対象案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '復元対象案件', 'status' => '気になる']);
         $project->delete();
 
         $this->postJson("/api/projects/{$project->id}/restore")->assertStatus(200);
@@ -187,7 +186,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_restored_project_removed_from_trash(): void
     {
-        $project = Project::create(['name' => '復元対象案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '復元対象案件', 'status' => '気になる']);
         $project->delete();
 
         $this->postJson("/api/projects/{$project->id}/restore")->assertStatus(200);
@@ -199,7 +198,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_restore_rejects_non_trashed_project(): void
     {
-        $project = Project::create(['name' => '未削除案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '未削除案件', 'status' => '気になる']);
 
         $response = $this->postJson("/api/projects/{$project->id}/restore");
 
@@ -217,7 +216,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_force_delete_succeeds(): void
     {
-        $project = Project::create(['name' => '完全削除対象案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '完全削除対象案件', 'status' => '気になる']);
         $project->delete();
 
         $response = $this->deleteJson("/api/projects/{$project->id}/force");
@@ -227,7 +226,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_force_deleted_project_not_found_even_with_trashed(): void
     {
-        $project = Project::create(['name' => '完全削除対象案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '完全削除対象案件', 'status' => '気になる']);
         $project->delete();
 
         $this->deleteJson("/api/projects/{$project->id}/force")->assertStatus(204);
@@ -237,7 +236,7 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_force_delete_rejects_non_trashed_project(): void
     {
-        $project = Project::create(['name' => '未削除案件', 'status' => '気になる']);
+        $project = $this->createProject(['name' => '未削除案件', 'status' => '気になる']);
 
         $response = $this->deleteJson("/api/projects/{$project->id}/force");
 
@@ -256,9 +255,9 @@ class ProjectTrashApiTest extends TestCase
 
     public function test_trash_and_restore_work_for_both_types(): void
     {
-        $career = Project::create(['name' => 'キャリア案件', 'type' => 'career', 'status' => '内定']);
+        $career = $this->createProject(['name' => 'キャリア案件', 'type' => 'career', 'status' => '内定']);
         $career->delete();
-        $sideJob = Project::create(['name' => '副業案件', 'type' => 'side_job', 'status' => '気になる']);
+        $sideJob = $this->createProject(['name' => '副業案件', 'type' => 'side_job', 'status' => '気になる']);
         $sideJob->delete();
 
         $trashResponse = $this->getJson('/api/projects/trash');

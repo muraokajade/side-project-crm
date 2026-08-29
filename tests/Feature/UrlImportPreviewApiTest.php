@@ -9,9 +9,8 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\FakeHostResolver;
-use Tests\TestCase;
 
-class UrlImportPreviewApiTest extends TestCase
+class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
 {
     use RefreshDatabase;
 
