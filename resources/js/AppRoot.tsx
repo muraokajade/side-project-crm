@@ -106,6 +106,15 @@ function AppRoot() {
 
   const summary = useMemo(() => computeStatusSummary(projects), [projects]);
 
+  // 0件の理由が「まだ登録していない」のか「絞り込みの結果」なのかで空状態を出し分ける。
+  const hasActiveFilter = typeFilter !== 'all' || appliedSearch !== '';
+
+  const clearFilters = () => {
+    setTypeFilter('all');
+    setSearchInput('');
+    setAppliedSearch('');
+  };
+
   const buildSubmitBody = (data: ProjectFormData, isCreate: boolean) => {
     const body: Record<string, unknown> = { ...data };
     const numericFields: (keyof ProjectFormData)[] = ['reward', 'applicant_count', 'recruitment_count'];
@@ -251,26 +260,34 @@ function AppRoot() {
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+        <div className="max-w-7xl mx-auto flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <h1 className="text-xl font-semibold text-slate-800">転職＋副業 管理</h1>
+
+          <div className="flex flex-col items-start gap-2 md:items-end">
+          {/* 主操作(登録)だけをボタンとして目立たせる。 */}
           <div className="flex items-center gap-2">
             <button onClick={() => setImportOpen(true)}
-              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
+              className="px-3 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700">
               URLから登録
             </button>
             <button onClick={openCreate}
-              className="px-3 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700">
+              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
               手入力
             </button>
-            <button onClick={() => setView('trash')}
-              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
+          </div>
+
+          {/* ゴミ箱・ログアウトは誤操作しにくいよう、主操作と分けた控えめな並びにまとめる。 */}
+          <div className="flex items-center gap-3 text-xs text-slate-500 max-w-full">
+            <span className="truncate">{authUser.email}</span>
+            <span aria-hidden="true" className="text-slate-300">|</span>
+            <button onClick={() => setView('trash')} className="underline hover:text-slate-700 shrink-0">
               ゴミ箱
             </button>
-            <span className="text-sm text-slate-500 ml-1">{authUser.email}</span>
-            <button onClick={handleLogout}
-              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
+            <span aria-hidden="true" className="text-slate-300">|</span>
+            <button onClick={handleLogout} className="underline hover:text-slate-700 shrink-0">
               ログアウト
             </button>
+          </div>
           </div>
         </div>
       </header>
@@ -338,9 +355,41 @@ function AppRoot() {
               案件一覧 <span className="text-slate-400 font-normal">{projects.length}件</span>
             </h2>
             {projects.length === 0 && (
-              <div className="bg-white rounded-lg shadow-sm p-8 text-center text-slate-400 text-sm">
-                案件がありません
-              </div>
+              hasActiveFilter ? (
+                <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+                  <p className="text-sm text-slate-600">条件に一致する案件がありません。</p>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-3 px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50"
+                  >
+                    条件をクリア
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+                  <p className="text-sm font-medium text-slate-700">まだ案件がありません</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    求人ページのURLを貼り付けると、案件名や報酬を取り込んで登録できます。
+                  </p>
+                  <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setImportOpen(true)}
+                      className="px-4 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700"
+                    >
+                      URLから登録
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openCreate}
+                      className="px-4 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50"
+                    >
+                      手入力で登録
+                    </button>
+                  </div>
+                </div>
+              )
             )}
             {projects.map(p => (
               <ProjectCard

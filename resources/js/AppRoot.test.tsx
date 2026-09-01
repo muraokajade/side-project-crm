@@ -113,9 +113,38 @@ describe('AppRoot', () => {
     expect((input as HTMLInputElement).value).toBe('');
   });
 
-  it('一覧が0件のとき「案件がありません」を表示する', async () => {
+  it('未登録で0件のときはURL取込へ誘導する空状態を表示する', async () => {
     render(<AppRoot />);
-    await waitFor(() => expect(screen.getByText('案件がありません')).toBeInTheDocument());
+
+    await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
+
+    // 空状態からURL取込・手入力の両方へ進める。
+    expect(screen.getAllByRole('button', { name: 'URLから登録' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '手入力で登録' })).toBeInTheDocument();
+  });
+
+  it('空状態の「URLから登録」からURL取込モーダルを開ける', async () => {
+    render(<AppRoot />);
+    await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
+
+    const buttons = screen.getAllByRole('button', { name: 'URLから登録' });
+    fireEvent.click(buttons[buttons.length - 1]);
+
+    expect(screen.getByText('案件ページのURL')).toBeInTheDocument();
+  });
+
+  it('絞り込みの結果0件のときは、未登録とは別の空状態を出して条件をクリアできる', async () => {
+    render(<AppRoot />);
+    await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '転職' }));
+
+    await waitFor(() => expect(screen.getByText('条件に一致する案件がありません。')).toBeInTheDocument());
+    expect(screen.queryByText('まだ案件がありません')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '条件をクリア' }));
+
+    await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
   });
 
   it('削除確認後にDELETE /api/projects/{id}を呼び出し、一覧を再取得する', async () => {
@@ -133,8 +162,8 @@ describe('AppRoot', () => {
     render(<AppRoot />);
     await waitFor(() => expect(screen.getByText('削除対象案件')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /削除対象案件/ }));
-    fireEvent.click(screen.getByRole('button', { name: '削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ゴミ箱へ移動' }));
 
     await waitFor(() => {
       const deleteCalled = fetchMock.mock.calls.some(

@@ -85,7 +85,7 @@ describe('TrashView', () => {
     render(<TrashView onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('削除済み案件')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /削除済み案件/ }));
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
     fireEvent.click(screen.getByRole('button', { name: '復元' }));
 
     await waitFor(() => {
@@ -105,7 +105,7 @@ describe('TrashView', () => {
     render(<TrashView onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('削除済み案件')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /削除済み案件/ }));
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
     fireEvent.click(screen.getByRole('button', { name: '完全削除' }));
 
     expect(window.confirm).toHaveBeenCalled();
@@ -125,7 +125,7 @@ describe('TrashView', () => {
     render(<TrashView onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('削除済み案件')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /削除済み案件/ }));
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
     fireEvent.click(screen.getByRole('button', { name: '完全削除' }));
 
     await waitFor(() => {
