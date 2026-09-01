@@ -52,7 +52,7 @@ describe('UrlImportModal', () => {
     }));
 
     const onPreviewReady = vi.fn();
-    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} />);
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} onManualEntry={() => {}} />);
 
     fillUrlAndSubmit('https://example.com/job/1');
 
@@ -95,7 +95,7 @@ describe('UrlImportModal', () => {
     }));
 
     const onPreviewReady = vi.fn();
-    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} />);
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} onManualEntry={() => {}} />);
 
     fillUrlAndSubmit('https://example.com/');
 
@@ -105,25 +105,29 @@ describe('UrlImportModal', () => {
     expect(notice.warnings).toEqual(['ページからタイトルを取得できなかったため、手入力が必要です。']);
   });
 
-  it('取得失敗時(SSRF拒否等)はエラーメッセージを表示し、onPreviewReadyは呼ばれない', async () => {
+  it('取得失敗時(SSRF拒否等)は定型文を表示し、サーバーの生メッセージは出さない', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(422, {
       message: 'アクセスが許可されていないホストです。',
       error_code: 'blocked_host',
     }));
 
     const onPreviewReady = vi.fn();
-    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} />);
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} onManualEntry={() => {}} />);
 
     fillUrlAndSubmit('http://127.0.0.1/');
 
-    await waitFor(() => expect(screen.getByText('アクセスが許可されていないホストです。')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('このURLは取得できません。公開されている求人ページのURLかご確認ください。')).toBeInTheDocument()
+    );
+    // サーバーが返した文言をそのまま画面へ出さない。
+    expect(screen.queryByText('アクセスが許可されていないホストです。')).not.toBeInTheDocument();
     expect(onPreviewReady).not.toHaveBeenCalled();
   });
 
   it('通信自体に失敗した場合は汎用エラーを表示する', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network down'));
 
-    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} />);
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
 
     fillUrlAndSubmit('https://example.com/');
 
@@ -136,7 +140,7 @@ describe('UrlImportModal', () => {
       () => new Promise<Response>(resolve => { resolveFetch = resolve; })
     );
 
-    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} />);
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://example.com/' } });
     const button = screen.getByRole('button', { name: '取得する' });
@@ -157,5 +161,121 @@ describe('UrlImportModal', () => {
     }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  });
+
+  // ---- ログイン必須ページの手入力誘導 -----------------------------------
+
+  const TYPE_ENTRY_URL = 'https://type.jp/entry_history/entry_message_list/12345/';
+  const GUIDANCE = 'このURLはログインが必要なページのため、求人情報を自動取得できません。'
+    + 'URLを保持したまま、会社名・求人名・年収などを手入力して登録できます。';
+
+  it('type応募履歴URLを入力すると、送信前に案内を出し「手入力で続ける」を主導線にする', () => {
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: TYPE_ENTRY_URL } });
+
+    expect(screen.getByText(GUIDANCE)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '手入力で続ける' })).toBeInTheDocument();
+    // 事前判定の段階では取得も試せるが、主導線ではない。
+    expect(screen.getByRole('button', { name: '取得する' })).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('「手入力で続ける」でURLと種別を引き継いで手入力へ進む', () => {
+    const onManualEntry = vi.fn();
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={onManualEntry} />);
+
+    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: TYPE_ENTRY_URL } });
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'career' } });
+    fireEvent.click(screen.getByRole('button', { name: '手入力で続ける' }));
+
+    expect(onManualEntry).toHaveBeenCalledWith(TYPE_ENTRY_URL, 'career');
+  });
+
+  it('requires_manual_entry応答では、URLを保持したまま手入力と再試行を選べる', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(422, {
+      message: GUIDANCE,
+      error_code: 'requires_manual_entry',
+      requires_manual_entry: true,
+      project_url: 'https://example.com/private/1',
+      type: 'side_job',
+    }));
+
+    const onPreviewReady = vi.fn();
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} onManualEntry={() => {}} />);
+
+    fillUrlAndSubmit('https://example.com/private/1');
+
+    await waitFor(() => expect(screen.getByText(GUIDANCE)).toBeInTheDocument());
+
+    // 入力済みURLが消えない。
+    expect((screen.getByPlaceholderText('https://...') as HTMLInputElement).value)
+      .toBe('https://example.com/private/1');
+    expect(screen.getByRole('button', { name: '手入力で続ける' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument();
+    expect(onPreviewReady).not.toHaveBeenCalled();
+  });
+
+  it('401(セッション切れ)でも生の Unauthenticated. を表示しない', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(401, { message: 'Unauthenticated.' }));
+
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    fillUrlAndSubmit('https://type.jp/entry_history/1');
+
+    await waitFor(() =>
+      expect(screen.getByText('セッションが切れました。ページを再読み込みしてログインし直してください。')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Unauthenticated.')).not.toBeInTheDocument();
+  });
+
+  it('取得失敗後もURLを保持し、手入力で続けるとそのURLが引き継がれる', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(502, {
+      message: '取得先でサーバーエラーが発生しました。',
+      error_code: 'upstream_server_error',
+    }));
+
+    const onManualEntry = vi.fn();
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={onManualEntry} />);
+
+    fillUrlAndSubmit('https://example.com/job/9');
+
+    await waitFor(() =>
+      expect(screen.getByText('取得先でエラーが発生しました。時間をおいて再試行してください。')).toBeInTheDocument()
+    );
+    // 失敗後は再試行と手入力の両方を選べる。
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '手入力で続ける' }));
+    expect(onManualEntry).toHaveBeenCalledWith('https://example.com/job/9', 'side_job');
+  });
+
+  it('URLを直すと前回の失敗表示は消える', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(502, {
+      message: 'x', error_code: 'not_found',
+    }));
+
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    fillUrlAndSubmit('https://example.com/missing');
+    await waitFor(() =>
+      expect(screen.getByText('ページが見つかりませんでした。URLをご確認ください。')).toBeInTheDocument()
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://example.com/ok' } });
+
+    expect(screen.queryByText('ページが見つかりませんでした。URLをご確認ください。')).not.toBeInTheDocument();
+  });
+
+  it('公開求人URLでは従来どおり取得ボタンのみを出す', () => {
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText('https://...'), {
+      target: { value: 'https://type.jp/job-1/1344057_detail/' },
+    });
+
+    expect(screen.getByRole('button', { name: '取得する' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '手入力で続ける' })).not.toBeInTheDocument();
+    expect(screen.queryByText(GUIDANCE)).not.toBeInTheDocument();
   });
 });

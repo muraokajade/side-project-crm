@@ -271,14 +271,18 @@ class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
 
     // ---- 取得失敗の分類 --------------------------------------------------
 
-    public function test_remote_403_is_mapped_to_forbidden(): void
+    public function test_remote_403_leads_to_manual_entry_instead_of_a_raw_error(): void
     {
+        // 403はログインが必要なページである可能性が高いため、失敗ではなく手入力誘導として扱う。
         $this->fakeDns(['example.com' => ['8.8.8.8']]);
         Http::fake(['*' => Http::response('forbidden', 403)]);
 
         $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/']);
 
-        $response->assertStatus(502)->assertJsonPath('error_code', 'forbidden');
+        $response->assertStatus(422)
+            ->assertJsonPath('error_code', 'requires_manual_entry')
+            ->assertJsonPath('requires_manual_entry', true)
+            ->assertJsonPath('project_url', 'https://example.com/');
     }
 
     public function test_remote_404_is_mapped_to_not_found(): void
@@ -582,5 +586,108 @@ class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
 
         $response->assertStatus(422);
         $this->assertSame($before, Project::count());
+    }
+
+    // ---- ログイン必須ページの手入力誘導 -----------------------------------
+
+    public function test_type_entry_history_url_is_routed_to_manual_entry_without_fetching(): void
+    {
+        // 応募履歴URLは利用者のCookieが必要なため、取得を試みずに手入力誘導とする。
+        Http::fake();
+
+        $response = $this->postJson('/api/import/preview', [
+            'url' => 'https://type.jp/entry_history/entry_message_list/12345/',
+            'type' => 'career',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error_code', 'requires_manual_entry')
+            ->assertJsonPath('requires_manual_entry', true)
+            ->assertJsonPath('project_url', 'https://type.jp/entry_history/entry_message_list/12345/')
+            ->assertJsonPath('type', 'career');
+
+        // 外部への取得は一切行わない。
+        Http::assertNothingSent();
+    }
+
+    public function test_manual_entry_message_explains_the_reason_without_internal_details(): void
+    {
+        Http::fake();
+
+        $response = $this->postJson('/api/import/preview', [
+            'url' => 'https://type.jp/entry_history/list',
+        ]);
+
+        $message = $response->json('message');
+
+        $this->assertStringContainsString('ログインが必要なページ', $message);
+        $this->assertStringContainsString('手入力', $message);
+        // 生のエラー文言・内部情報を含めない。
+        $this->assertStringNotContainsString('Unauthenticated', $message);
+        $this->assertStringNotContainsString('401', $message);
+        $this->assertStringNotContainsString('Exception', $message);
+    }
+
+    public function test_remote_401_leads_to_manual_entry(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('unauthorized', 401)]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/private/1']);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error_code', 'requires_manual_entry')
+            ->assertJsonPath('requires_manual_entry', true)
+            ->assertJsonPath('project_url', 'https://example.com/private/1');
+    }
+
+    public function test_redirect_to_login_page_leads_to_manual_entry(): void
+    {
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake([
+            'https://example.com/jobs/1' => Http::response('', 302, ['Location' => 'https://example.com/login?next=/jobs/1']),
+            '*' => Http::response('<html></html>', 200, ['Content-Type' => 'text/html']),
+        ]);
+
+        $response = $this->postJson('/api/import/preview', ['url' => 'https://example.com/jobs/1']);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error_code', 'requires_manual_entry')
+            ->assertJsonPath('requires_manual_entry', true);
+    }
+
+    public function test_manual_entry_response_preserves_the_default_type_when_omitted(): void
+    {
+        Http::fake();
+
+        $this->postJson('/api/import/preview', ['url' => 'https://type.jp/entry_history/1'])
+            ->assertStatus(422)
+            ->assertJsonPath('type', 'side_job');
+    }
+
+    public function test_non_login_failures_are_still_reported_as_fetch_errors(): void
+    {
+        // 404等は手入力誘導にせず、従来どおり取得失敗として返す(再試行の余地があるため)。
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response('not found', 404)]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://example.com/'])
+            ->assertStatus(502)
+            ->assertJsonPath('error_code', 'not_found');
+    }
+
+    public function test_public_type_job_url_is_still_fetched_normally(): void
+    {
+        // 公開求人URLの自動取得は壊さない。
+        $this->fakeDns(['type.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="公開求人タイトル"></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://type.jp/job-1/1344057_detail/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.name', '公開求人タイトル');
     }
 }

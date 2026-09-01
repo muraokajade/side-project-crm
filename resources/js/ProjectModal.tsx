@@ -152,8 +152,8 @@ export default function ProjectModal({
               {fieldError('client_name') && <p className="text-red-600 text-xs mt-1">{fieldError('client_name')}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">案件URL</label>
-              <input type="url" name="project_url" value={form.project_url} onChange={handleChange}
+              <label htmlFor="project_url" className="block text-sm font-medium text-slate-700 mb-1">案件URL</label>
+              <input id="project_url" type="url" name="project_url" value={form.project_url} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
               {fieldError('project_url') && <p className="text-red-600 text-xs mt-1">{fieldError('project_url')}</p>}
             </div>

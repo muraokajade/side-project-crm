@@ -254,4 +254,34 @@ describe('AppRoot', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument());
   });
+
+  it('URL取込で手入力へ進むと、URLと種別を保持した登録フォームが開く', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/auth/me')) return Promise.resolve(jsonResponse(200, { data: AUTH_USER }));
+      if (url.includes('/api/import/preview')) {
+        return Promise.resolve(jsonResponse(422, {
+          message: 'このURLはログインが必要なページのため、求人情報を自動取得できません。',
+          error_code: 'requires_manual_entry',
+          requires_manual_entry: true,
+        }));
+      }
+      return Promise.resolve(jsonResponse(200, { data: [] }));
+    });
+
+    render(<AppRoot />);
+    await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'URLから登録' })[0]);
+    fireEvent.change(screen.getByPlaceholderText('https://...'), {
+      target: { value: 'https://type.jp/entry_history/entry_message_list/12345/' },
+    });
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'career' } });
+    fireEvent.click(screen.getByRole('button', { name: '手入力で続ける' }));
+
+    // 登録フォームへ遷移し、URLと種別が引き継がれている。
+    await waitFor(() => expect(screen.getByText('案件を登録')).toBeInTheDocument());
+    expect((screen.getByLabelText('案件URL') as HTMLInputElement).value)
+      .toBe('https://type.jp/entry_history/entry_message_list/12345/');
+    expect((screen.getByLabelText('種別') as HTMLSelectElement).value).toBe('career');
+  });
 });

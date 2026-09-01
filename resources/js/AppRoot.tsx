@@ -8,6 +8,7 @@ import UrlImportModal from './components/UrlImportModal';
 import TrashView from './components/TrashView';
 import AuthScreen from './components/AuthScreen';
 import { AuthUser, fetchMe, logout as logoutRequest } from './api/auth';
+import { emptyFormData } from './utils/toFormData';
 
 type TypeFilter = 'all' | ProjectType;
 
@@ -237,6 +238,23 @@ function AppRoot() {
     setModalOpen(true);
   };
 
+  /**
+   * URL取込を諦めて手入力へ進む。入力済みのURLと種別だけを引き継ぎ、
+   * 残りは空欄の登録フォームを開く(取得できなかった項目を利用者が埋められるようにする)。
+   */
+  const handleManualEntry = (url: string, projectType: ProjectType) => {
+    setImportOpen(false);
+    setEditingProject(null);
+    setCreateInitialData({ ...emptyFormData(projectType), project_url: url });
+    setCreateNotice({
+      fetchStatus: 'partial',
+      warnings: ['このURLはログインが必要なページのため自動取得できませんでした。内容を入力してください。'],
+    });
+    setModalErrors(undefined);
+    setView('list');
+    setModalOpen(true);
+  };
+
   const handlePreviewReady = (formData: ProjectFormData, notice: ProjectModalNotice) => {
     setImportOpen(false);
     setEditingProject(null);
@@ -421,6 +439,7 @@ function AppRoot() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onPreviewReady={handlePreviewReady}
+        onManualEntry={handleManualEntry}
       />
     </div>
   );

@@ -65,6 +65,11 @@ class SafeHtmlFetcher
 
                 $currentUrl = $this->resolveRedirectLocation($currentUrl, $location);
 
+                // ログイン画面へ飛ばされた場合、これ以上たどっても求人情報は得られない。
+                if ($this->looksLikeLoginUrl($currentUrl)) {
+                    throw new UrlFetchException('redirected_to_login', 'ログインページへリダイレクトされました。');
+                }
+
                 continue;
             }
 
@@ -131,6 +136,22 @@ class SafeHtmlFetcher
         }
     }
 
+    /**
+     * リダイレクト先がログイン画面とみられるか(パスの断片で判定する)。
+     */
+    private function looksLikeLoginUrl(string $url): bool
+    {
+        $path = strtolower((string) (parse_url($url, PHP_URL_PATH) ?? ''));
+
+        foreach (['/login', '/signin', '/sign_in', '/auth/', '/session/new'] as $fragment) {
+            if (str_contains($path, $fragment)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function assertSuccessfulStatus(Response $response): void
     {
         $status = $response->status();
@@ -140,6 +161,9 @@ class SafeHtmlFetcher
         }
 
         throw new UrlFetchException(...match (true) {
+            // 401/403は、利用者のログインが必要なページである可能性が高い。
+            // 呼び出し側(ImportPreviewController)が手入力誘導へ振り分ける。
+            $status === 401 => ['requires_login', 'ログインが必要なページです(401)。'],
             $status === 403 => ['forbidden', 'アクセスが拒否されました(403)。'],
             $status === 404 => ['not_found', 'ページが見つかりませんでした(404)。'],
             $status === 429 => ['rate_limited', 'リクエストが制限されました(429)。'],
