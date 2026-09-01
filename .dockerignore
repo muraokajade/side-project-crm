@@ -1,0 +1,20 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+vendor
+public/build
+storage/logs/*
+tests
+upload
+work
+
+# 本番イメージに不要な作業用ディレクトリ・別アプリを含めない
+mobile
+.kiro
+.claude
+.agents
+.vercel
+Dockerfile.vercel
