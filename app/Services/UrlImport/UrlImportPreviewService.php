@@ -21,6 +21,7 @@ class UrlImportPreviewService
         private readonly SafeHtmlFetcher $fetcher,
         private readonly GenericHtmlExtractor $genericExtractor,
         private readonly CrowdWorksExtractor $crowdWorksExtractor,
+        private readonly MediaResolver $mediaResolver,
     ) {
     }
 
@@ -36,8 +37,11 @@ class UrlImportPreviewService
 
         [$merged, $warnings] = $this->extractFields($fetched['html'], $host, $path);
 
-        $name = $merged['name'] ?? null;
-        $description = $this->excerptDescription($merged['description'] ?? null);
+        // 求人ページの装飾(罫線・■等)や抽出ノイズを落としてから、抜粋・保存する。
+        $name = TextNormalizer::normalize($merged['name'] ?? null);
+        $description = $this->excerptDescription(
+            TextNormalizer::normalize($merged['description'] ?? null)
+        );
 
         if ($description === null) {
             $warnings[] = '募集内容を取得できませんでした。確認して入力してください。';
@@ -47,9 +51,8 @@ class UrlImportPreviewService
             $warnings[] = 'ページからタイトルを取得できなかったため、手入力が必要です。';
         }
 
-        $media = $this->crowdWorksExtractor->supports($host, $path)
-            ? 'CrowdWorks'
-            : ($merged['media'] ?? $host);
+        // 媒体プルダウンで選択済みになるよう、既知ホストは選択肢内の値へ寄せる。
+        $media = $this->mediaResolver->resolve($host, $merged['media'] ?? $host);
 
         return [
             'project_url' => $url,

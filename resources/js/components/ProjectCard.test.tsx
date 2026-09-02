@@ -300,6 +300,40 @@ describe('ProjectCard 報酬表示', () => {
   });
 });
 
+describe('ProjectCard 年収表記の整形表示', () => {
+  it('一覧では機械的な年収表記を読みやすい形で表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '5000000〜15000000 JPY (YEAR)' })} variant="active" />);
+
+    expect(screen.getByText('年収500万円〜1,500万円')).toBeInTheDocument();
+    expect(screen.queryByText('5000000〜15000000 JPY (YEAR)')).not.toBeInTheDocument();
+  });
+
+  it('詳細でも同じ整形結果を表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '5000000 JPY (YEAR)' })} variant="active" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    // 一覧と詳細の両方に出るため、2箇所で同じ表記になる。
+    expect(screen.getAllByText('年収500万円').length).toBe(2);
+  });
+
+  it('「応相談」は加工せずそのまま表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '応相談' })} variant="active" />);
+    expect(screen.getByText('応相談')).toBeInTheDocument();
+  });
+
+  it('時給表記は加工せずそのまま表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '時給2,000円〜' })} variant="active" />);
+    expect(screen.getByText('時給2,000円〜')).toBeInTheDocument();
+  });
+
+  it('整形対象でも0を含む場合は原文のままにし、0円表示にしない', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '0 JPY (YEAR)' })} variant="active" />);
+    expect(screen.getByText('0 JPY (YEAR)')).toBeInTheDocument();
+    expect(screen.queryByText('年収0円')).not.toBeInTheDocument();
+  });
+});
+
 describe('ProjectCard variant別の操作', () => {
   it('編集・削除は一覧では出さず、詳細を開いたときだけ出す(誤操作防止)', () => {
     render(<ProjectCard project={makeProject()} variant="active" />);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Project } from '../types/project';
 import { STATUS_COLORS } from '../constants/projectOptions';
+import { rewardDisplay } from '../utils/rewardDisplay';
 
 interface ProjectCardProps {
   project: Project;
@@ -37,17 +38,6 @@ const DEADLINE_SOON_DAYS = 7;
 /** http/https以外のスキームは外部リンクとして開かない(安全な表示のための最小限のガード)。 */
 function isSafeExternalUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
-}
-
-/**
- * 報酬表示はreward_text(ページ上の表記、例: 「応相談」)を優先する。
- * reward_textが空でreward(数値)があればそれを表示し、どちらも無ければ「未掲載」とする
- * (0円・推測値へは変換しない)。
- */
-function rewardDisplay(p: Project): string {
-  if (p.reward_text) return p.reward_text;
-  if (p.reward !== null) return `${Number(p.reward).toLocaleString('ja-JP')}円`;
-  return '未掲載';
 }
 
 /** 一覧用に、改行・連続空白をつぶして先頭だけを抜き出す。 */

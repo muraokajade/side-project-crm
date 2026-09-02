@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ProjectModal from './ProjectModal';
+import { emptyFormData } from './utils/toFormData';
 
 describe('ProjectModal', () => {
   it('errorsで渡されたフィールド別エラーを対応する項目の下に表示する', () => {
@@ -197,5 +198,39 @@ describe('ProjectModal', () => {
     );
     expect(screen.getByText(/一部の項目を自動取得できませんでした/)).toBeInTheDocument();
     expect(screen.getByText('報酬をレンジ表記等のため自動入力できませんでした。')).toBeInTheDocument();
+  });
+
+  it('報酬欄は原文を保持し、整形後の見え方を補助表示する', () => {
+    const project = {
+      id: 1, type: 'career' as const, name: '案件', project_url: null, client_name: null,
+      media: null, category: null, description: null, applied_date: null, deadline: null,
+      status: '気になる', reward: null, reward_text: '5000000〜15000000 JPY (YEAR)',
+      working_hours: null, applicant_count: null, recruitment_count: null, application_text: null,
+      next_action: null, next_action_date: null, memo: null, priority: null, is_favorite: false,
+      job_type: null, location: null, remote_type: null, employment_type: null,
+      contract_type: null, delivery_date: null, fetched_at: null, deleted_at: null,
+      created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+    };
+
+    render(
+      <ProjectModal open mode="edit" project={project} onClose={() => {}} onSubmit={() => {}} />
+    );
+
+    // 保存対象の入力欄は原文のまま。
+    expect((screen.getByLabelText('報酬') as HTMLInputElement).value)
+      .toBe('5000000〜15000000 JPY (YEAR)');
+    // 整形後の見え方は補助表示として添える。
+    expect(screen.getByText('表示: 年収500万円〜1,500万円')).toBeInTheDocument();
+  });
+
+  it('加工対象外の報酬表記では補助表示を出さない', () => {
+    render(
+      <ProjectModal open mode="create" project={null}
+        initialData={{ ...emptyFormData('side_job'), reward_text: '応相談' }}
+        onClose={() => {}} onSubmit={() => {}} />
+    );
+
+    expect((screen.getByLabelText('報酬') as HTMLInputElement).value).toBe('応相談');
+    expect(screen.queryByText(/^表示: /)).not.toBeInTheDocument();
   });
 });

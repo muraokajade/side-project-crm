@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Project, ProjectFormData, ProjectType } from './types/project';
 import { MEDIA_OPTIONS, CATEGORY_OPTIONS, statusOptionsForType } from './constants/projectOptions';
 import { emptyFormData, projectToFormData } from './utils/toFormData';
+import { formatRewardText } from './utils/rewardDisplay';
 
 export interface ProjectModalNotice {
   fetchStatus: 'success' | 'partial';
@@ -78,6 +79,12 @@ export default function ProjectModal({
   };
 
   const statusOptions = statusOptionsForType(form.type);
+
+  // 「5000000〜15000000 JPY (YEAR)」のような機械的表記のときだけ、整形後の見え方を添える。
+  const formattedReward =
+    form.reward_text && formatRewardText(form.reward_text) !== form.reward_text
+      ? formatRewardText(form.reward_text)
+      : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -180,6 +187,10 @@ export default function ProjectModal({
               <input id="reward_text" type="text" name="reward_text" value={form.reward_text} onChange={handleChange}
                 placeholder="例: 80,000円 / 時給2,000円 / 応相談"
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              {/* 保存するのは入力欄の原文。整形後の見え方だけを補助的に示す。 */}
+              {formattedReward && (
+                <p className="text-xs text-slate-500 mt-1">表示: {formattedReward}</p>
+              )}
               {fieldError('reward_text') && <p className="text-red-600 text-xs mt-1">{fieldError('reward_text')}</p>}
             </div>
             <div>

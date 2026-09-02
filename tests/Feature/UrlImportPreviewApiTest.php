@@ -690,4 +690,125 @@ class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
             ->assertStatus(200)
             ->assertJsonPath('data.name', '公開求人タイトル');
     }
+
+    // ---- type.jp: 装飾・抽出ノイズの除去と媒体の自動設定 -------------------
+
+    /**
+     * 実際のtype.jp求人ページに相当する構造(JSON-LDの本文が罫線と■で区切られ、
+     * og:site_nameが媒体プルダウンに無い長い文言)のfixture。
+     */
+    private function fakeTypeJobPage(): void
+    {
+        $this->fakeDns(['type.jp' => ['8.8.8.8']]);
+
+        $description = '----------------■仕事内容----------------'
+            . '業務系・Web系などの各種システム開発全般を担当頂きます。'
+            . '----------------■応募資格----------------'
+            . '■学歴不問 ■業務未経験OK（プログラミング経験必須）'
+            . '=====■想定給与====='
+            . '★想定年収500万〜1221万円 ■正社員月給41.7万〜101.7万円'
+            . '※給与は経験・スキルを考慮の上、決定します。'
+            . ' END';
+
+        $html = '<html><head>'
+            . '<meta property="og:title" content="■開発エンジニア／フルリモート＆地方在住可">'
+            . '<meta property="og:site_name" content="転職type - マッチする求人情報が分かる、探せる、転職サイト">'
+            . '<script type="application/ld+json">'
+            . json_encode([
+                '@type' => 'JobPosting',
+                'title' => '■開発エンジニア／フルリモート＆地方在住可',
+                'description' => $description,
+                'hiringOrganization' => ['name' => '株式会社リリー技研'],
+            ], JSON_UNESCAPED_UNICODE)
+            . '</script></head></html>';
+
+        Http::fake(['*' => Http::response($html, 200, ['Content-Type' => 'text/html'])]);
+    }
+
+    public function test_type_job_name_has_no_decoration_symbols(): void
+    {
+        $this->fakeTypeJobPage();
+
+        $name = $this->postJson('/api/import/preview', [
+            'url' => 'https://type.jp/job-1/1344057_detail/',
+            'type' => 'career',
+        ])->assertStatus(200)->json('data.name');
+
+        $this->assertStringNotContainsString('■', $name);
+        $this->assertSame('開発エンジニア／フルリモート＆地方在住可', $name);
+    }
+
+    public function test_type_job_description_has_no_decoration_or_extraction_noise(): void
+    {
+        $this->fakeTypeJobPage();
+
+        $description = $this->postJson('/api/import/preview', [
+            'url' => 'https://type.jp/job-1/1344057_detail/',
+        ])->assertStatus(200)->json('data.description');
+
+        $this->assertNotNull($description);
+        $this->assertStringNotContainsString('■', $description);
+        $this->assertStringNotContainsString('=====', $description);
+        $this->assertStringNotContainsString('----', $description);
+        // 見出しの語自体は残り、前後が連結していない。
+        $this->assertStringContainsString('仕事内容', $description);
+        $this->assertStringContainsString('応募資格', $description);
+        $this->assertStringNotContainsString('仕事内容業務系', $description);
+    }
+
+    public function test_type_job_description_keeps_meaningful_content(): void
+    {
+        $this->fakeTypeJobPage();
+
+        $description = $this->postJson('/api/import/preview', [
+            'url' => 'https://type.jp/job-1/1344057_detail/',
+        ])->assertStatus(200)->json('data.description');
+
+        // 金額・注記など有効な本文は削らない(抜粋長の範囲内で確認する)。
+        $this->assertStringContainsString('業務系・Web系', $description);
+        $this->assertStringContainsString('プログラミング経験必須', $description);
+    }
+
+    public function test_type_job_media_is_set_to_an_existing_option(): void
+    {
+        $this->fakeTypeJobPage();
+
+        $media = $this->postJson('/api/import/preview', [
+            'url' => 'https://type.jp/job-1/1344057_detail/',
+        ])->assertStatus(200)->json('data.media');
+
+        // 媒体プルダウンの選択肢に無い og:site_name をそのまま入れると未選択に見えるため、
+        // 既存の選択肢である「その他」へ寄せる(選択肢は増やさない)。
+        $this->assertSame('その他', $media);
+    }
+
+    public function test_crowdworks_media_is_unchanged(): void
+    {
+        $this->fakeDns(['crowdworks.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件"></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://crowdworks.jp/public/jobs/1'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.media', 'CrowdWorks');
+    }
+
+    public function test_unknown_host_media_falls_back_to_site_name(): void
+    {
+        // 既知ホスト以外は従来どおりの挙動を保つ。
+        $this->fakeDns(['example.com' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件">'
+            . '<meta property="og:site_name" content="サンプルサイト"></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://example.com/job/1'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.media', 'サンプルサイト');
+    }
 }
