@@ -33,6 +33,13 @@ class SafeHtmlFetcher
 
     private const REQUEST_TIMEOUT_SECONDS = 6;
 
+    /**
+     * リダイレクト追跡を含めた取得全体の上限秒数。
+     * 1リクエストごとの上限だけでは、リダイレクトの数だけ時間が積み上がってしまうため、
+     * 全体にも締め切りを設けて「いつまでも終わらない」状態を防ぐ。
+     */
+    private const MAX_TOTAL_SECONDS = 15;
+
     private const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
 
     public function __construct(private readonly UrlSafetyValidator $safetyValidator)
@@ -45,12 +52,13 @@ class SafeHtmlFetcher
     public function fetch(string $url): array
     {
         $currentUrl = $url;
+        $deadline = microtime(true) + self::MAX_TOTAL_SECONDS;
 
         for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
             // リダイレクト先でも毎回: URL検証→DNS解決→公開IP判定を必ずやり直す。
             $safety = $this->safetyValidator->assertSafe($currentUrl);
 
-            $response = $this->send($currentUrl, $safety);
+            $response = $this->send($currentUrl, $safety, $this->remainingSeconds($deadline));
 
             if (in_array($response->status(), self::REDIRECT_STATUSES, true)) {
                 if ($hop === self::MAX_REDIRECTS) {
@@ -116,12 +124,27 @@ class SafeHtmlFetcher
     /**
      * @param array{scheme: string, host: string, port: int, ips: list<string>} $safety
      */
-    private function send(string $url, array $safety): Response
+    /**
+     * 全体の締め切りまでの残り秒数。使い切っていればタイムアウトとして中断する。
+     */
+    private function remainingSeconds(float $deadline): int
+    {
+        $remaining = $deadline - microtime(true);
+
+        if ($remaining <= 0) {
+            throw new UrlFetchException('timeout', '接続がタイムアウトしました。');
+        }
+
+        // 1リクエストの上限と、全体の残り時間の短いほうを採用する。
+        return max(1, (int) ceil(min((float) self::REQUEST_TIMEOUT_SECONDS, $remaining)));
+    }
+
+    private function send(string $url, array $safety, int $timeoutSeconds): Response
     {
         try {
             return Http::withHeaders(['User-Agent' => self::USER_AGENT])
-                ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
-                ->timeout(self::REQUEST_TIMEOUT_SECONDS)
+                ->connectTimeout(min(self::CONNECT_TIMEOUT_SECONDS, $timeoutSeconds))
+                ->timeout($timeoutSeconds)
                 ->withOptions($this->buildConnectionOptions($safety))
                 ->get($url);
         } catch (ConnectionException $e) {

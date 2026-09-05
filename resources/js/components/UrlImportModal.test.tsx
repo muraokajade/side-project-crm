@@ -278,4 +278,96 @@ describe('UrlImportModal', () => {
     expect(screen.queryByRole('button', { name: '手入力で続ける' })).not.toBeInTheDocument();
     expect(screen.queryByText(GUIDANCE)).not.toBeInTheDocument();
   });
+
+  // ---- 「取得中…」が残らないこと ----------------------------------------
+
+  it('タイムアウト(中断)時はローディングを解除し、案内と手入力導線を出す', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      const err = new Error('aborted');
+      err.name = 'TimeoutError';
+      return Promise.reject(err);
+    });
+
+    const onManualEntry = vi.fn();
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={onManualEntry} />);
+
+    fillUrlAndSubmit('https://type.jp/job-1/1350132_detail/?pathway=116');
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('取得に時間がかかりすぎたため中断しました。もう一度試すか、手入力で続けてください。')
+      ).toBeInTheDocument()
+    );
+
+    // 「取得中...」が残らず、操作可能な状態へ戻る。
+    expect(screen.queryByText('取得中...')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '手入力で続ける' })).toBeInTheDocument();
+
+    // URLは保持され、そのまま手入力へ進める。
+    fireEvent.click(screen.getByRole('button', { name: '手入力で続ける' }));
+    expect(onManualEntry).toHaveBeenCalledWith('https://type.jp/job-1/1350132_detail/?pathway=116', 'side_job');
+  });
+
+  it('AbortErrorでも同じ案内を出す', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      return Promise.reject(err);
+    });
+
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+    fillUrlAndSubmit('https://example.com/job/1');
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('取得に時間がかかりすぎたため中断しました。もう一度試すか、手入力で続けてください。')
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByText('取得中...')).not.toBeInTheDocument();
+  });
+
+  it('取得中にキャンセルしても、開き直したときにローディングが残らない', async () => {
+    // 応答が返らないリクエストを再現する。
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise<Response>(() => {}));
+
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <UrlImportModal open onClose={onClose} onPreviewReady={() => {}} onManualEntry={() => {}} />
+    );
+
+    fillUrlAndSubmit('https://example.com/job/1');
+    expect(screen.getByText('取得中...')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    expect(onClose).toHaveBeenCalled();
+
+    // 閉じて開き直す。
+    rerender(<UrlImportModal open={false} onClose={onClose} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+    rerender(<UrlImportModal open onClose={onClose} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    // 「取得中...」ではなく通常の取得ボタンに戻っている。
+    expect(screen.queryByText('取得中...')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '取得する' })).toBeEnabled();
+  });
+
+  it('キャンセル後に再度取得できる(多重送信ガードが残らない)', async () => {
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation(() => new Promise<Response>(() => {}));
+
+    const { rerender } = render(
+      <UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />
+    );
+
+    fillUrlAndSubmit('https://example.com/job/1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    rerender(<UrlImportModal open={false} onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+    rerender(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    // 再度送信できる(ガードが解除されている)。
+    fillUrlAndSubmit('https://example.com/job/2');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

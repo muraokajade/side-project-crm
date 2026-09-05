@@ -6,20 +6,36 @@ function csrfToken(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 }
 
+/** URL取込は外部サイトの取得を伴うため、応答が返らない場合に備えて上限を設ける。 */
+export const PREVIEW_TIMEOUT_MS = 20_000;
+
 /**
  * fetch呼び出しの共通ヘッダー付与だけを担う薄いラッパー。ステータス分岐は呼び出し側(AppRoot等)が行う。
+ *
+ * fetchには既定のタイムアウトが無く、応答が返らないとPromiseが解決しないため、
+ * timeoutMsを指定した呼び出しではAbortControllerで必ず打ち切る
+ * (画面が「取得中…」のまま戻らなくなるのを防ぐ)。
  */
-export function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export function apiFetch(url: string, options: RequestInit = {}, timeoutMs?: number): Promise<Response> {
+  const controller = timeoutMs !== undefined ? new AbortController() : undefined;
+  const timer =
+    controller !== undefined
+      ? setTimeout(() => controller.abort(new DOMException('timeout', 'TimeoutError')), timeoutMs)
+      : undefined;
+
   return fetch(url, {
     ...options,
     // セッションCookieを必ず送る(未指定だとブラウザ既定に依存するため明示する)。
     credentials: 'same-origin',
+    signal: controller?.signal,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       'X-CSRF-TOKEN': csrfToken(),
       ...options.headers,
     },
+  }).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
   });
 }
 
@@ -52,5 +68,9 @@ export function forceDeleteProject(id: number): Promise<Response> {
 }
 
 export function previewImportUrl(url: string, type: string): Promise<Response> {
-  return apiFetch('/api/import/preview', { method: 'POST', body: JSON.stringify({ url, type }) });
+  return apiFetch(
+    '/api/import/preview',
+    { method: 'POST', body: JSON.stringify({ url, type }) },
+    PREVIEW_TIMEOUT_MS
+  );
 }

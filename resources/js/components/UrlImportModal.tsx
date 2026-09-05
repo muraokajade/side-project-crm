@@ -47,6 +47,10 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
     setType('side_job');
     setValidationError('');
     setOutcome(null);
+    // 取得中にキャンセルされてもローディングが残らないようにする
+    // (残ると再度開いたときに「取得中…」のまま操作できなくなる)。
+    isLoadingRef.current = false;
+    setLoading(false);
   };
 
   const handleClose = () => {
@@ -113,8 +117,15 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
 
       // 生のエラー文言・レスポンス本文は表示しない(error_codeから定型文へ変換する)。
       setOutcome({ kind: 'error', message: fetchErrorMessage(json.error_code, res.status) });
-    } catch {
-      setOutcome({ kind: 'error', message: '通信に失敗しました。ネットワーク状態を確認してください。' });
+    } catch (e) {
+      // AbortControllerによる打ち切り(応答が返らない場合)は、通信障害と区別して案内する。
+      const aborted = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+      setOutcome({
+        kind: 'error',
+        message: aborted
+          ? '取得に時間がかかりすぎたため中断しました。もう一度試すか、手入力で続けてください。'
+          : '通信に失敗しました。ネットワーク状態を確認してください。',
+      });
     } finally {
       isLoadingRef.current = false;
       setLoading(false);
