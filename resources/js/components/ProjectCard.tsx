@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Project } from '../types/project';
 import { STATUS_COLORS } from '../constants/projectOptions';
 import { rewardDisplay } from '../utils/rewardDisplay';
+import { resolveMediaForDisplay } from '../utils/mediaFromUrl';
+import { employmentTypeDisplay } from '../utils/employmentType';
 
 interface ProjectCardProps {
   project: Project;
@@ -76,23 +78,30 @@ const DEADLINE_CLASSES: Record<DeadlineState, string> = {
   normal: 'text-slate-600',
 };
 
-/** 一覧の1行に出す「項目名 + 値」。値が無い項目は行ごと出さない。 */
+/**
+ * 一覧に出す「項目名 + 値」。値が無い項目は出さない。
+ * 幅が狭いときは値を折り返して読めるようにする(切り詰めない)。
+ */
 function MetaItem({ label, value, className }: { label: string; value: string | null; className?: string }) {
   if (!value) return null;
   return (
-    <span className="inline-flex items-baseline gap-1 min-w-0">
-      <span className="text-slate-400 shrink-0">{label}</span>
-      <span className={`truncate ${className ?? 'text-slate-600'}`}>{value}</span>
-    </span>
+    <div className="flex items-baseline gap-1.5 min-w-0">
+      <dt className="text-slate-400 shrink-0">{label}</dt>
+      <dd className={`min-w-0 break-words ${className ?? 'text-slate-600'}`}>{value}</dd>
+    </div>
   );
 }
 
+/**
+ * 詳細の「項目名 + 値」。値が無い項目は出さない。
+ * 募集内容の段落・改行は whitespace-pre-wrap で維持し、長い値は折り返す。
+ */
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
   return (
-    <div>
-      <p className="text-xs text-slate-400">{label}</p>
-      <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{value}</p>
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-400 mb-0.5">{label}</dt>
+      <dd className="text-sm text-slate-700 whitespace-pre-wrap break-words">{value}</dd>
     </div>
   );
 }
@@ -112,111 +121,128 @@ export default function ProjectCard({
 
   const excerpt = listExcerpt(p.description);
   const deadline = p.deadline?.slice(0, 10) ?? null;
-  // クライアント名が無い場合は媒体で代替する(「どこの案件か」を必ず1つ出す)。
-  const sourceLabel = p.client_name ? 'クライアント' : '媒体';
-  const sourceValue = p.client_name || p.media;
-
+  // DBの媒体が古い値でも、案件URLから判定できる場合はそちらで表示する(DBは書き換えない)。
+  const media = resolveMediaForDisplay(p);
   const detailId = `project-detail-${p.id}`;
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-      {/* 通常表示: 案件名 / 種別 / ステータス / 報酬 / 応募締切 / クライアント(媒体) のみ */}
+      {/*
+        通常表示は「案件名 → バッジ → 報酬/締切/媒体/クライアント → 募集内容の抜粋 → 詳細ボタン」の順。
+        URL全文や職種・勤務地・雇用形態は一覧に常時並べず、詳細を開いたときだけ出す。
+      */}
       <div className="px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              {p.is_favorite && (
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-400 shrink-0" role="img" aria-label="お気に入り">
-                  <path d="M10 1.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z" />
-                </svg>
-              )}
-              <h3 className="font-medium text-slate-800 break-words min-w-0">{p.name}</h3>
-              <span className={`px-2 py-0.5 rounded text-xs shrink-0 ${TYPE_BADGE_CLASSES[p.type]}`}>
-                {TYPE_LABELS[p.type]}
-              </span>
-              <span className={`px-2 py-0.5 rounded text-xs shrink-0 ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
-                {p.status}
-              </span>
-            </div>
+        {/* 1. 案件名(最大2行) */}
+        <div className="flex items-start gap-2">
+          {p.is_favorite && (
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 mt-0.5 text-amber-400 shrink-0" role="img" aria-label="お気に入り">
+              <path d="M10 1.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z" />
+            </svg>
+          )}
+          <h3 className="min-w-0 flex-1 font-medium text-slate-800 line-clamp-2 break-words">{p.name}</h3>
+        </div>
 
-            {excerpt && (
-              <p className="mt-1.5 text-sm text-slate-500 line-clamp-2 break-words">{excerpt}</p>
-            )}
+        {/* 2. 種別・ステータスのバッジ */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <span className={`px-2 py-0.5 rounded text-xs ${TYPE_BADGE_CLASSES[p.type]}`}>
+            {TYPE_LABELS[p.type]}
+          </span>
+          <span className={`px-2 py-0.5 rounded text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
+            {p.status}
+          </span>
+        </div>
 
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs">
-              <MetaItem label="報酬" value={rewardDisplay(p)} className="text-slate-700 font-medium" />
-              <MetaItem
-                label="応募締切"
-                value={deadline}
-                className={deadline ? DEADLINE_CLASSES[deadlineState(deadline)] : undefined}
-              />
-              <MetaItem label={sourceLabel} value={sourceValue} />
-            </div>
-          </div>
+        {/* 3. 報酬・応募締切・媒体・クライアント(狭い幅では1列に折り返す) */}
+        <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <MetaItem label="報酬" value={rewardDisplay(p)} className="text-slate-700 font-medium" />
+          <MetaItem
+            label="応募締切"
+            value={deadline}
+            className={deadline ? DEADLINE_CLASSES[deadlineState(deadline)] : undefined}
+          />
+          <MetaItem label="媒体" value={media} />
+          <MetaItem label="クライアント" value={p.client_name} />
+        </dl>
 
-          <div className="shrink-0">
-            <button
-              type="button"
-              onClick={() => setExpanded(v => !v)}
-              aria-expanded={expanded}
-              aria-controls={detailId}
-              className="px-2.5 py-1.5 text-xs text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50 whitespace-nowrap"
-            >
-              {expanded ? '詳細を閉じる' : '詳細を開く'}
-            </button>
-          </div>
+        {/* 4. 募集内容の抜粋(最大2行) */}
+        {excerpt && (
+          <p className="mt-2 text-sm text-slate-500 line-clamp-2 break-words">{excerpt}</p>
+        )}
+
+        {/* 5. 詳細を開く/閉じる */}
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            aria-expanded={expanded}
+            aria-controls={detailId}
+            className="px-2.5 py-1.5 text-xs text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50 whitespace-nowrap"
+          >
+            {expanded ? '詳細を閉じる' : '詳細を開く'}
+          </button>
         </div>
       </div>
 
       {expanded && (
-        <div id={detailId} className="px-4 py-4 border-t border-slate-100 space-y-3">
-          <Field label="募集内容（抜粋）" value={p.description} />
+        <div id={detailId} className="px-4 py-4 border-t border-slate-100 space-y-4">
+          {/* 募集内容は全文。段落・改行はFieldのwhitespace-pre-wrapで維持する。 */}
+          <dl>
+            <Field label="募集内容" value={p.description} />
+          </dl>
+
           {p.project_url && (
-            <div>
-              <p className="text-xs text-slate-400">URL</p>
-              {isSafeExternalUrl(p.project_url) ? (
-                <a
-                  href={p.project_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-600 underline break-all"
-                >
-                  {p.project_url}
-                </a>
-              ) : (
-                <p className="text-sm text-slate-700 break-all">{p.project_url}</p>
-              )}
-            </div>
+            <dl>
+              <dt className="text-xs text-slate-400 mb-0.5">案件URL</dt>
+              <dd className="min-w-0">
+                {isSafeExternalUrl(p.project_url) ? (
+                  <a
+                    href={p.project_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 underline break-all"
+                  >
+                    {p.project_url}
+                  </a>
+                ) : (
+                  <span className="text-sm text-slate-700 break-all">{p.project_url}</span>
+                )}
+              </dd>
+            </dl>
           )}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+
+          <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3">
             <Field label="報酬" value={rewardDisplay(p)} />
-            <Field label="媒体" value={p.media} />
+            <Field label="媒体" value={media} />
+            <Field label="クライアント" value={p.client_name} />
             <Field label="カテゴリ" value={p.category} />
             <Field label="応募日" value={p.applied_date?.slice(0, 10)} />
             <Field label="次アクション" value={p.next_action} />
             <Field label="次アクション日" value={p.next_action_date?.slice(0, 10)} />
-          </div>
-          <Field label="メモ" value={p.memo} />
+          </dl>
+
+          <dl>
+            <Field label="メモ" value={p.memo} />
+          </dl>
 
           {p.type === 'career' && (p.job_type || p.location || p.remote_type || p.employment_type) && (
             <div>
-              <p className="text-xs font-medium text-slate-500 mb-1">転職専用項目</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <p className="text-xs font-medium text-slate-500 mb-2">転職専用項目</p>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
                 <Field label="職種" value={p.job_type} />
                 <Field label="勤務地" value={p.location} />
                 <Field label="リモート区分" value={p.remote_type} />
-                <Field label="雇用形態" value={p.employment_type} />
-              </div>
+                <Field label="雇用形態" value={employmentTypeDisplay(p.employment_type)} />
+              </dl>
             </div>
           )}
 
           {p.type === 'side_job' && (p.contract_type || p.delivery_date) && (
             <div>
-              <p className="text-xs font-medium text-slate-500 mb-1">副業専用項目</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <p className="text-xs font-medium text-slate-500 mb-2">副業専用項目</p>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
                 <Field label="契約形態" value={p.contract_type} />
                 <Field label="納品日" value={p.delivery_date?.slice(0, 10)} />
-              </div>
+              </dl>
             </div>
           )}
 

@@ -3,6 +3,7 @@ import { Project, ProjectFormData, ProjectType } from './types/project';
 import { MEDIA_OPTIONS, CATEGORY_OPTIONS, statusOptionsForType } from './constants/projectOptions';
 import { emptyFormData, projectToFormData } from './utils/toFormData';
 import { formatRewardText } from './utils/rewardDisplay';
+import { splitMediaForForm, FALLBACK_MEDIA } from './utils/mediaFromUrl';
 
 export interface ProjectModalNotice {
   fetchStatus: 'success' | 'partial';
@@ -39,6 +40,7 @@ export default function ProjectModal({
 
   useEffect(() => {
     if (mode === 'edit' && project) {
+      // projectToFormData側で、選択肢に無い媒体名は「その他」+自由入力欄へ分解される。
       setForm(projectToFormData(project));
     } else if (initialData) {
       setForm(initialData);
@@ -135,12 +137,25 @@ export default function ProjectModal({
               {fieldError('status') && <p className="text-red-600 text-xs mt-1">{fieldError('status')}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">媒体</label>
-              <select name="media" value={form.media} onChange={handleChange}
+              <label htmlFor="media" className="block text-sm font-medium text-slate-700 mb-1">媒体</label>
+              <select id="media" name="media" value={form.media} onChange={handleChange}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
                 <option value="">選択なし</option>
                 {MEDIA_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
+              {/* 「その他」を選んだときだけ、実際の媒体名を入力できるようにする。 */}
+              {form.media === FALLBACK_MEDIA && (
+                <input
+                  id="media_other"
+                  type="text"
+                  name="media_other"
+                  value={form.media_other}
+                  onChange={handleChange}
+                  placeholder="例: Green、Indeed、Wantedly、エン転職"
+                  aria-label="媒体名"
+                  className="mt-2 w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+              )}
               {fieldError('media') && <p className="text-red-600 text-xs mt-1">{fieldError('media')}</p>}
             </div>
             <div>

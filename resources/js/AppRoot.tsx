@@ -9,6 +9,7 @@ import TrashView from './components/TrashView';
 import AuthScreen from './components/AuthScreen';
 import { AuthUser, fetchMe, logout as logoutRequest } from './api/auth';
 import { emptyFormData } from './utils/toFormData';
+import { mergeMediaFromForm } from './utils/mediaFromUrl';
 
 type TypeFilter = 'all' | ProjectType;
 
@@ -118,6 +119,10 @@ function AppRoot() {
 
   const buildSubmitBody = (data: ProjectFormData, isCreate: boolean) => {
     const body: Record<string, unknown> = { ...data };
+
+    // 「その他」+自由入力の媒体名は、mediaへ統合して保存する(media_otherは送らない)。
+    body.media = mergeMediaFromForm(data.media, data.media_other);
+    delete body.media_other;
     const numericFields: (keyof ProjectFormData)[] = ['reward', 'applicant_count', 'recruitment_count'];
     numericFields.forEach(key => {
       const value = data[key] as string;

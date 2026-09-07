@@ -22,6 +22,7 @@ class UrlImportPreviewService
         private readonly GenericHtmlExtractor $genericExtractor,
         private readonly CrowdWorksExtractor $crowdWorksExtractor,
         private readonly MediaResolver $mediaResolver,
+        private readonly RewardTextExtractor $rewardExtractor,
     ) {
     }
 
@@ -51,8 +52,9 @@ class UrlImportPreviewService
             $warnings[] = 'ページからタイトルを取得できなかったため、手入力が必要です。';
         }
 
-        // 媒体プルダウンで選択済みになるよう、既知ホストは選択肢内の値へ寄せる。
-        $media = $this->mediaResolver->resolve($host, $merged['media'] ?? $host);
+        // 媒体プルダウンで選択済みになるよう、必ず選択肢内の値にする
+        // (未知サイトは「その他」。実際の媒体名は画面の自由入力欄で補える)。
+        $media = $this->mediaResolver->resolve($host);
 
         return [
             'project_url' => $url,
@@ -121,6 +123,13 @@ class UrlImportPreviewService
             }
 
             $merged = $this->mergeFields($siteSpecificFields, $generic);
+
+            // 構造化データ(JSON-LD)に報酬が無いページでも、本文・表・タイトルに
+            // 「月給35万円〜」等が明示されていることが多いので補う。
+            // 数値へは変換せず原文のまま入れる(0円や推測値を作らない)。
+            if (($merged['reward_text'] ?? null) === null) {
+                $merged['reward_text'] = $this->rewardExtractor->extract($xpath, $merged['name'] ?? null);
+            }
         } catch (Throwable) {
             // 解析中に想定外の例外が起きても、取得自体は成功しているためpartialとして返す(500にしない)。
             $merged = [];

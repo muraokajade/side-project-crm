@@ -769,7 +769,7 @@ class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
         $this->assertStringContainsString('プログラミング経験必須', $description);
     }
 
-    public function test_type_job_media_is_set_to_an_existing_option(): void
+    public function test_type_job_media_is_set_to_type(): void
     {
         $this->fakeTypeJobPage();
 
@@ -778,8 +778,37 @@ class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
         ])->assertStatus(200)->json('data.media');
 
         // 媒体プルダウンの選択肢に無い og:site_name をそのまま入れると未選択に見えるため、
-        // 既存の選択肢である「その他」へ寄せる(選択肢は増やさない)。
-        $this->assertSame('その他', $media);
+        // 選択肢の値へ寄せる。
+        $this->assertSame('type', $media);
+    }
+
+    public function test_freelance_hub_media_is_set_to_freelance_hub(): void
+    {
+        $this->fakeDns(['freelance-hub.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件">'
+            . '<meta property="og:site_name" content="フリーランスエンジニアの案件・求人情報なら【フリーランスHub】"></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://freelance-hub.jp/project/detail/12345/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.media', 'フリーランスハブ');
+    }
+
+    public function test_www_prefixed_host_is_also_resolved(): void
+    {
+        $this->fakeDns(['www.type.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件"></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://www.type.jp/job-1/1/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.media', 'type');
     }
 
     public function test_crowdworks_media_is_unchanged(): void
@@ -796,9 +825,10 @@ class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
             ->assertJsonPath('data.media', 'CrowdWorks');
     }
 
-    public function test_unknown_host_media_falls_back_to_site_name(): void
+    public function test_unknown_host_media_falls_back_to_other(): void
     {
-        // 既知ホスト以外は従来どおりの挙動を保つ。
+        // 既知ホスト以外は「その他」にする(選択肢に無い長いサイト名を入れない)。
+        // 実際の媒体名は、画面の「その他」自由入力欄で補える。
         $this->fakeDns(['example.com' => ['8.8.8.8']]);
         Http::fake(['*' => Http::response(
             '<html><head><meta property="og:title" content="案件">'
@@ -809,6 +839,124 @@ class UrlImportPreviewApiTest extends AuthenticatedApiTestCase
 
         $this->postJson('/api/import/preview', ['url' => 'https://example.com/job/1'])
             ->assertStatus(200)
-            ->assertJsonPath('data.media', 'サンプルサイト');
+            ->assertJsonPath('data.media', 'その他');
+    }
+
+
+    // ---- 本文からの報酬抽出 -----------------------------------------------
+
+    public function test_reward_is_extracted_from_page_table_when_json_ld_has_none(): void
+    {
+        // 構造化データに報酬が無くても、求人詳細の表から取りこぼさない。
+        $this->fakeDns(['type.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="Webエンジニア"></head>'
+            . '<body><table><tr><th>給与</th><td>月給35万円〜75万円</td></tr></table></body></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://type.jp/job-1/1/', 'type' => 'career'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.reward_text', '月給35万円〜75万円')
+            // 数値へ無理に変換して0円へ落とさない。
+            ->assertJsonPath('data.reward', null);
+    }
+
+    public function test_reward_is_extracted_from_page_title(): void
+    {
+        $this->fakeDns(['type.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="【Webエンジニア】月給35万円〜 リモート可"></head>'
+            . '<body><p>詳細は面談にてご説明します。</p></body></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://type.jp/job-1/1/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.reward_text', '月給35万円〜');
+    }
+
+    public function test_json_ld_reward_takes_priority_over_page_text(): void
+    {
+        // 構造化データに報酬がある場合は、そちらを優先する(本文で上書きしない)。
+        $this->fakeDns(['type.jp' => ['8.8.8.8']]);
+        $html = '<html><head><script type="application/ld+json">'
+            . json_encode([
+                '@type' => 'JobPosting',
+                'title' => '案件',
+                'baseSalary' => ['currency' => 'JPY', 'value' => ['value' => 5000000, 'unitText' => 'YEAR']],
+            ], JSON_UNESCAPED_UNICODE)
+            . '</script></head><body><table><tr><th>給与</th><td>月給20万円</td></tr></table></body></html>';
+
+        Http::fake(['*' => Http::response($html, 200, ['Content-Type' => 'text/html'])]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://type.jp/job-1/1/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.reward_text', '5000000 JPY (YEAR)');
+    }
+
+    public function test_no_reward_is_invented_when_page_has_none(): void
+    {
+        // 報酬の記載が無いページで、金額や0円を作らない。
+        $this->fakeDns(['type.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件"></head>'
+            . '<body><p>年間休日145日。従業員数120名。リモート可。</p></body></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://type.jp/job-1/1/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.reward_text', null)
+            ->assertJsonPath('data.reward', null);
+    }
+
+    public function test_negotiable_page_does_not_produce_an_amount(): void
+    {
+        $this->fakeDns(['type.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件"></head>'
+            . '<body><table><tr><th>給与</th><td>応相談</td></tr></table></body></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://type.jp/job-1/1/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.reward_text', null)
+            ->assertJsonPath('data.reward', null);
+    }
+
+    public function test_hourly_wage_page_keeps_the_original_text(): void
+    {
+        $this->fakeDns(['crowdworks.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件"></head>'
+            . '<body><dl><dt>報酬</dt><dd>時給2,000円〜</dd></dl></body></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://crowdworks.jp/public/jobs/1'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.reward_text', '時給2,000円〜')
+            ->assertJsonPath('data.reward', null);
+    }
+
+    public function test_freelance_hub_subdomain_resolves_to_freelance_hub(): void
+    {
+        $this->fakeDns(['pro.freelance-hub.jp' => ['8.8.8.8']]);
+        Http::fake(['*' => Http::response(
+            '<html><head><meta property="og:title" content="案件"></head></html>',
+            200,
+            ['Content-Type' => 'text/html']
+        )]);
+
+        $this->postJson('/api/import/preview', ['url' => 'https://pro.freelance-hub.jp/project/1/'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.media', 'フリーランスハブ');
     }
 }

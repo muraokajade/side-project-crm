@@ -9,7 +9,8 @@ namespace App\Services\UrlImport;
  * og:site_nameは「転職type - マッチする求人情報が分かる、探せる、転職サイト」のように
  * 選択肢と一致しない長い文言になりうるので、既知のホストは選択肢内の値へ寄せる。
  *
- * 選択肢そのものは増やさない方針のため、専用の選択肢がない媒体は「その他」にする。
+ * ここで返す値は MEDIA_OPTIONS に存在するものだけにすること
+ * (存在しない値を返すとプルダウンが未選択に見えてしまう)。
  */
 class MediaResolver
 {
@@ -23,18 +24,35 @@ class MediaResolver
         'crowdworks.jp' => 'CrowdWorks',
         'menta.work' => 'MENTA',
         'lancers.jp' => 'Lancers',
-        // 専用の選択肢を持たない媒体は「その他」へ寄せる(選択肢は増やさない)。
-        'type.jp' => 'その他',
+        'type.jp' => 'type',
+        'freelance-hub.jp' => 'フリーランスハブ',
     ];
 
+    /** 既知の媒体に当てはまらない場合に使う値。プルダウンの受け皿。 */
+    public const FALLBACK_MEDIA = 'その他';
+
     /**
-     * @param string $host 取得先のホスト
-     * @param string|null $fallback 既知ホストでない場合に使う値(og:site_name等)
+     * ホストから媒体を決める。既知の媒体でなければ「その他」を返す。
+     *
+     * og:site_nameのような長い文言をそのまま入れるとプルダウンが未選択に見えるため、
+     * 必ずMEDIA_OPTIONSに存在する値だけを返す。実際の媒体名は、利用者が
+     * 「その他」選択時の自由入力欄で補える。
      */
-    public function resolve(string $host, ?string $fallback = null): ?string
+    public function resolve(string $host): string
     {
         $normalizedHost = preg_replace('/^www\./', '', strtolower($host));
 
-        return self::HOST_TO_MEDIA[$normalizedHost] ?? $fallback;
+        if (isset(self::HOST_TO_MEDIA[$normalizedHost])) {
+            return self::HOST_TO_MEDIA[$normalizedHost];
+        }
+
+        // サブドメイン(例: pro.freelance-hub.jp)も同じ媒体として扱う。
+        foreach (self::HOST_TO_MEDIA as $knownHost => $media) {
+            if (str_ends_with($normalizedHost, '.' . $knownHost)) {
+                return $media;
+            }
+        }
+
+        return self::FALLBACK_MEDIA;
     }
 }

@@ -57,6 +57,8 @@ export interface ProjectFormData {
   project_url: string;
   client_name: string;
   media: string;
+  /** 媒体で「その他」を選んだときの自由入力欄。保存時はmediaへ統合する(送信はしない)。 */
+  media_other: string;
   category: string;
   description: string;
   applied_date: string;

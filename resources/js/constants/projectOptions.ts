@@ -13,7 +13,8 @@ export function statusOptionsForType(type: ProjectType): readonly string[] {
   return type === 'career' ? CAREER_STATUS_OPTIONS : SIDE_JOB_STATUS_OPTIONS;
 }
 
-export const MEDIA_OPTIONS = ['CrowdWorks', 'MENTA', 'Lancers', 'その他'] as const;
+// 「その他」は受け皿として末尾に置く。既存の選択肢は削除・改名しない。
+export const MEDIA_OPTIONS = ['CrowdWorks', 'MENTA', 'Lancers', 'type', 'フリーランスハブ', 'その他'] as const;
 
 export const CATEGORY_OPTIONS = ['Web開発', 'AI', 'DX・業務改善', 'システム開発', 'コンサル', 'その他'] as const;
 

@@ -20,6 +20,39 @@ describe('formatRewardText 年収表記の整形', () => {
 
   it('万で割り切れない額は円表記へ落とし、端数を丸めない', () => {
     expect(formatRewardText('5005000 JPY (YEAR)')).toBe('年収5,005,000円');
+    expect(formatRewardText('355000 JPY (MONTH)')).toBe('月給355,000円');
+  });
+});
+
+describe('formatRewardText 月給・YEN表記', () => {
+  it('JPY (MONTH) を月給表記へ整形する', () => {
+    expect(formatRewardText('350000 JPY (MONTH)')).toBe('月給35万円');
+  });
+
+  it('YEN (MONTH) も同じく整形する', () => {
+    expect(formatRewardText('350000 YEN (MONTH)')).toBe('月給35万円');
+  });
+
+  it('YEN (YEAR) を年収表記へ整形する', () => {
+    expect(formatRewardText('5000000 YEN (YEAR)')).toBe('年収500万円');
+  });
+
+  it('月給のレンジを整形する', () => {
+    expect(formatRewardText('350000〜500000 JPY (MONTH)')).toBe('月給35万円〜50万円');
+  });
+
+  it('年収のレンジを整形する', () => {
+    expect(formatRewardText('5000000〜7000000 JPY (YEAR)')).toBe('年収500万円〜700万円');
+  });
+
+  it('画面にJPY/YENの内部値を出さない', () => {
+    for (const input of ['350000 JPY (MONTH)', '5000000 YEN (YEAR)']) {
+      const out = formatRewardText(input);
+      expect(out).not.toContain('JPY');
+      expect(out).not.toContain('YEN');
+      expect(out).not.toContain('MONTH');
+      expect(out).not.toContain('YEAR');
+    }
   });
 });
 
@@ -28,13 +61,10 @@ describe('formatRewardText 加工しない値', () => {
     expect(formatRewardText('応相談')).toBe('応相談');
   });
 
-  it('時給表記はそのまま返す', () => {
+  it('時給・日給表記はそのまま返す', () => {
     expect(formatRewardText('時給2,000円〜')).toBe('時給2,000円〜');
     expect(formatRewardText('2000 JPY (HOUR)')).toBe('2000 JPY (HOUR)');
-  });
-
-  it('月額表記(YEAR以外)はそのまま返す', () => {
-    expect(formatRewardText('300000 JPY (MONTH)')).toBe('300000 JPY (MONTH)');
+    expect(formatRewardText('20000 JPY (DAY)')).toBe('20000 JPY (DAY)');
   });
 
   it('日本語の固定報酬表記はそのまま返す', () => {

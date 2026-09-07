@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import ProjectCard from './ProjectCard';
 import { Project } from '../types/project';
 
@@ -155,6 +155,7 @@ describe('ProjectCard 募集内容の抜粋', () => {
     render(<ProjectCard project={makeProject({ description: long })} variant="active" />);
 
     const excerpt = screen.getByText(/^あ+…$/);
+    expect(excerpt.tagName).toBe('P');
     expect(excerpt.className).toContain('line-clamp-2');
     // DOMにも全文を載せない(見た目のクランプだけに頼らない)。
     expect(excerpt.textContent!.length).toBeLessThan(long.length);
@@ -176,7 +177,8 @@ describe('ProjectCard 募集内容の抜粋', () => {
   it('概要が無ければ抜粋行自体を出さない', () => {
     const { container } = render(<ProjectCard project={makeProject({ description: null })} variant="active" />);
 
-    expect(container.querySelector('.line-clamp-2')).toBeNull();
+    // 抜粋の段落そのものが出ない(案件名にも同じクランプが付くため、pに限定して確認する)。
+    expect(container.querySelector('p.line-clamp-2')).toBeNull();
   });
 
   it('詳細を開くと概要の全文を表示する', () => {
@@ -331,6 +333,204 @@ describe('ProjectCard 年収表記の整形表示', () => {
     render(<ProjectCard project={makeProject({ reward_text: '0 JPY (YEAR)' })} variant="active" />);
     expect(screen.getByText('0 JPY (YEAR)')).toBeInTheDocument();
     expect(screen.queryByText('年収0円')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectCard 媒体のURL判定表示', () => {
+  it('既存type.jp案件(媒体=その他)を一覧・詳細でtypeと表示する', () => {
+    render(<ProjectCard project={makeProject({
+      client_name: null, media: 'その他', project_url: 'https://type.jp/job-1/1344057_detail/',
+    })} variant="active" />);
+
+    // 一覧(クライアント名が無いので媒体を出す)
+    expect(screen.getByText('type')).toBeInTheDocument();
+    expect(screen.queryByText('その他')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    // 詳細の媒体欄
+    expect(screen.getAllByText('type').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('フリーランスハブのURLはフリーランスハブと表示する', () => {
+    render(<ProjectCard project={makeProject({
+      client_name: null, media: null, project_url: 'https://freelance-hub.jp/project/detail/1/',
+    })} variant="active" />);
+
+    expect(screen.getByText('フリーランスハブ')).toBeInTheDocument();
+  });
+
+  it('利用者が選んだ媒体はURLで上書きしない', () => {
+    render(<ProjectCard project={makeProject({
+      client_name: null, media: 'MENTA', project_url: 'https://type.jp/job-1/1/',
+    })} variant="active" />);
+
+    expect(screen.getByText('MENTA')).toBeInTheDocument();
+    expect(screen.queryByText('type')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectCard 英語の内部値を出さない', () => {
+  it('雇用形態は日本語で表示する', () => {
+    render(<ProjectCard project={makeProject({
+      type: 'career', employment_type: 'FULL_TIME,CONTRACTOR',
+    })} variant="active" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    expect(screen.getByText('正社員/契約社員')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('FULL_TIME');
+    expect(document.body.textContent).not.toContain('CONTRACTOR');
+  });
+
+  it('報酬のJPY/YEN表記を日本語で表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '350000 YEN (MONTH)' })} variant="active" />);
+
+    expect(screen.getByText('月給35万円')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('YEN');
+    expect(document.body.textContent).not.toContain('MONTH');
+  });
+
+  it('年収レンジも日本語で表示する', () => {
+    render(<ProjectCard project={makeProject({ reward_text: '5000000〜7000000 JPY (YEAR)' })} variant="active" />);
+
+    expect(screen.getByText('年収500万円〜700万円')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('JPY');
+  });
+});
+
+describe('ProjectCard 媒体の自由入力値', () => {
+  it('未知の媒体名(Green等)をそのまま表示する', () => {
+    render(<ProjectCard project={makeProject({
+      client_name: null, media: 'Green', project_url: 'https://type.jp/job-1/1/',
+    })} variant="active" />);
+
+    expect(screen.getByText('Green')).toBeInTheDocument();
+  });
+});
+
+describe('ProjectCard 一覧の読みやすさ', () => {
+  it('長い案件名は2行までのクランプで省略する', () => {
+    const longName = 'とても長い案件名'.repeat(12);
+    render(<ProjectCard project={makeProject({ name: longName })} variant="active" />);
+
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading.className).toContain('line-clamp-2');
+    expect(heading.className).toContain('break-words');
+  });
+
+  it('一覧では報酬・応募締切・媒体・クライアントを出す', () => {
+    render(<ProjectCard project={makeProject({
+      reward_text: '年収500万円', deadline: '2099-12-31',
+      media: 'type', client_name: '株式会社サンプル',
+    })} variant="active" />);
+
+    expect(screen.getByText('報酬')).toBeInTheDocument();
+    expect(screen.getByText('応募締切')).toBeInTheDocument();
+    expect(screen.getByText('媒体')).toBeInTheDocument();
+    expect(screen.getByText('クライアント')).toBeInTheDocument();
+    expect(screen.getByText('株式会社サンプル')).toBeInTheDocument();
+  });
+
+  it('一覧にはURL全文や職種・勤務地・雇用形態を常時出さない', () => {
+    render(<ProjectCard project={makeProject({
+      type: 'career',
+      project_url: 'https://type.jp/job-1/1350132_detail/?pathway=116',
+      job_type: 'Webバックエンド', location: '東京', employment_type: 'FULL_TIME',
+    })} variant="active" />);
+
+    expect(screen.queryByText('https://type.jp/job-1/1350132_detail/?pathway=116')).not.toBeInTheDocument();
+    expect(screen.queryByText('Webバックエンド')).not.toBeInTheDocument();
+    expect(screen.queryByText('東京')).not.toBeInTheDocument();
+    expect(screen.queryByText('正社員')).not.toBeInTheDocument();
+  });
+
+  it('締切の色分けルールは維持する', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-05T09:00:00+09:00'));
+    try {
+      render(<ProjectCard project={makeProject({ deadline: '2026-09-01' })} variant="active" />);
+      expect(screen.getByText('2026-09-01').className).toContain('text-red-600');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('ProjectCard 詳細の表示', () => {
+  const detailed = makeProject({
+    type: 'career',
+    name: '案件',
+    description: '一行目\n\n三行目',
+    project_url: 'https://type.jp/job-1/1350132_detail/?pathway=116',
+    reward_text: '5000000 JPY (YEAR)',
+    media: 'type',
+    client_name: '株式会社サンプル',
+    job_type: 'Webバックエンド',
+    location: '東京',
+    employment_type: 'FULL_TIME',
+    memo: '面談メモ',
+  });
+
+  it('詳細を開くと各項目が表示される', () => {
+    render(<ProjectCard project={detailed} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    // 一覧にも同じ項目名が出るため、詳細領域に限定して確認する。
+    const detail = within(document.getElementById('project-detail-1')!);
+    for (const label of ['募集内容', '案件URL', '報酬', '媒体', 'クライアント', '職種', '勤務地', '雇用形態', 'メモ']) {
+      expect(detail.getByText(label)).toBeInTheDocument();
+    }
+    expect(detail.getByText('転職専用項目')).toBeInTheDocument();
+  });
+
+  it('募集内容は全文を段落・改行を維持して表示する', () => {
+    render(<ProjectCard project={detailed} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    const detail = within(document.getElementById('project-detail-1')!);
+    const body = detail.getByText(/一行目/);
+    expect(body.className).toContain('whitespace-pre-wrap');
+    expect(body.textContent).toContain('三行目');
+  });
+
+  it('長いURLは折り返せるようにする', () => {
+    render(<ProjectCard project={detailed} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    const link = screen.getByRole('link');
+    expect(link.className).toContain('break-all');
+  });
+
+  it('空欄の項目は表示しない', () => {
+    render(<ProjectCard project={makeProject({ memo: null, category: null })} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    expect(screen.queryByText('メモ')).not.toBeInTheDocument();
+    expect(screen.queryByText('カテゴリ')).not.toBeInTheDocument();
+  });
+
+  it('英語の内部値と取込ノイズが詳細に出ない', () => {
+    render(<ProjectCard project={{ ...detailed, description: '■仕事内容 ===== 本文 END' }} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    const text = document.body.textContent ?? '';
+    expect(text).not.toContain('FULL_TIME');
+    expect(text).not.toContain('JPY');
+    expect(text).not.toContain('YEN');
+    // 保存済みの値はそのまま出すが、雇用形態・報酬は日本語表示になる。
+    const detail = within(document.getElementById('project-detail-1')!);
+    expect(detail.getByText('正社員')).toBeInTheDocument();
+    expect(detail.getByText('年収500万円')).toBeInTheDocument();
+  });
+
+  it('編集・ゴミ箱へ移動は詳細の最下部にまとめる', () => {
+    render(<ProjectCard project={detailed} variant="active" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    expect(screen.getByText('操作')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '編集' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ゴミ箱へ移動' })).toBeInTheDocument();
   });
 });
 

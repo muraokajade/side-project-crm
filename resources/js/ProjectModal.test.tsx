@@ -233,4 +233,132 @@ describe('ProjectModal', () => {
     expect((screen.getByLabelText('報酬') as HTMLInputElement).value).toBe('応相談');
     expect(screen.queryByText(/^表示: /)).not.toBeInTheDocument();
   });
+
+  it('既存type.jp案件を編集で開くと媒体がtypeで選択済みになる', () => {
+    const project = {
+      id: 1, type: 'career' as const, name: '案件',
+      project_url: 'https://type.jp/job-1/1344057_detail/', client_name: null,
+      media: 'その他', category: null, description: null, applied_date: null, deadline: null,
+      status: '気になる', reward: null, reward_text: null,
+      working_hours: null, applicant_count: null, recruitment_count: null, application_text: null,
+      next_action: null, next_action_date: null, memo: null, priority: null, is_favorite: false,
+      job_type: null, location: null, remote_type: null, employment_type: null,
+      contract_type: null, delivery_date: null, fetched_at: null, deleted_at: null,
+      created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+    };
+
+    render(<ProjectModal open mode="edit" project={project} onClose={() => {}} onSubmit={() => {}} />);
+
+    const media = document.querySelector('[name="media"]') as HTMLSelectElement;
+    expect(media.value).toBe('type');
+  });
+
+  it('媒体プルダウンにtypeとフリーランスハブが選択肢として並ぶ', () => {
+    render(<ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />);
+
+    const media = document.querySelector('[name="media"]') as HTMLSelectElement;
+    const labels = [...media.options].map(o => o.textContent);
+
+    expect(labels).toContain('type');
+    expect(labels).toContain('フリーランスハブ');
+    // 既存の選択肢は残っている。
+    expect(labels).toContain('CrowdWorks');
+    expect(labels).toContain('MENTA');
+    expect(labels).toContain('Lancers');
+    expect(labels).toContain('その他');
+  });
+
+  const baseProject = (overrides: Record<string, unknown> = {}) => ({
+    id: 1, type: 'career' as const, name: '案件', project_url: null, client_name: null,
+    media: null, category: null, description: null, applied_date: null, deadline: null,
+    status: '気になる', reward: null, reward_text: null,
+    working_hours: null, applicant_count: null, recruitment_count: null, application_text: null,
+    next_action: null, next_action_date: null, memo: null, priority: null, is_favorite: false,
+    job_type: null, location: null, remote_type: null, employment_type: null,
+    contract_type: null, delivery_date: null, fetched_at: null, deleted_at: null,
+    created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+    ...overrides,
+  });
+
+  // ---- 媒体「その他」の自由入力 -----------------------------------------
+
+  it('媒体で「その他」を選ぶと媒体名の自由入力欄が出る', () => {
+    render(<ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />);
+
+    expect(screen.queryByLabelText('媒体名')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('媒体'), { target: { value: 'その他' } });
+
+    expect(screen.getByLabelText('媒体名')).toBeInTheDocument();
+  });
+
+  it('「その他」以外を選ぶと自由入力欄は出ない', () => {
+    render(<ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('媒体'), { target: { value: 'type' } });
+
+    expect(screen.queryByLabelText('媒体名')).not.toBeInTheDocument();
+  });
+
+  it('「その他」+自由入力した媒体名がonSubmitへ渡る', () => {
+    const onSubmit = vi.fn();
+    render(<ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={onSubmit} />);
+
+    fireEvent.change(document.querySelector('[name="name"]')!, { target: { value: '案件' } });
+    fireEvent.change(screen.getByLabelText('媒体'), { target: { value: 'その他' } });
+    fireEvent.change(screen.getByLabelText('媒体名'), { target: { value: 'Green' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録' }));
+
+    expect(onSubmit).toHaveBeenCalled();
+    expect(onSubmit.mock.calls[0][0].media).toBe('その他');
+    expect(onSubmit.mock.calls[0][0].media_other).toBe('Green');
+  });
+
+  it('未知の媒体名が保存済みの案件を編集で開くと、その他+自由入力に復元される', () => {
+    render(
+      <ProjectModal open mode="edit" project={baseProject({ media: 'Green' })}
+        onClose={() => {}} onSubmit={() => {}} />
+    );
+
+    expect((screen.getByLabelText('媒体') as HTMLSelectElement).value).toBe('その他');
+    expect((screen.getByLabelText('媒体名') as HTMLInputElement).value).toBe('Green');
+  });
+
+  it('未知の媒体名は編集して保存しても消えない', () => {
+    const onSubmit = vi.fn();
+    render(
+      <ProjectModal open mode="edit" project={baseProject({ media: 'エン転職' })}
+        onClose={() => {}} onSubmit={onSubmit} />
+    );
+
+    // 媒体には触れず、他の項目だけ編集して保存する。
+    fireEvent.change(document.querySelector('[name="name"]')!, { target: { value: '案件(更新)' } });
+    fireEvent.click(screen.getByRole('button', { name: '更新' }));
+
+    expect(onSubmit.mock.calls[0][0].media).toBe('その他');
+    expect(onSubmit.mock.calls[0][0].media_other).toBe('エン転職');
+  });
+
+  // ---- 英語の内部値を出さない -------------------------------------------
+
+  it('雇用形態の英語内部値は日本語で表示される', () => {
+    render(
+      <ProjectModal open mode="edit" project={baseProject({ employment_type: 'FULL_TIME,CONTRACTOR' })}
+        onClose={() => {}} onSubmit={() => {}} />
+    );
+
+    const input = document.querySelector('[name="employment_type"]') as HTMLInputElement;
+    expect(input.value).toBe('正社員/契約社員');
+    expect(document.body.textContent).not.toContain('FULL_TIME');
+    expect(document.body.textContent).not.toContain('CONTRACTOR');
+  });
+
+  it('報酬のJPY/YEN表記は補助表示が日本語になる', () => {
+    render(
+      <ProjectModal open mode="edit" project={baseProject({ reward_text: '350000 YEN (MONTH)' })}
+        onClose={() => {}} onSubmit={() => {}} />
+    );
+
+    expect(screen.getByText('表示: 月給35万円')).toBeInTheDocument();
+  });
 });

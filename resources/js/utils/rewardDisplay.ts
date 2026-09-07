@@ -7,13 +7,22 @@ import { Project } from '../types/project';
  * 機械的な表記になる。保存済みのreward_text原文は書き換えず、画面表示のときだけ
  * 「年収500万円〜1,500万円」の形へ整える。
  *
- * 円換算に確信が持てない表記(「応相談」「時給2,000円〜」など)は一切加工せず、
- * 元の文字列をそのまま返す。対象は JPY (YEAR) の年収表記だけに限定する。
+ * 円換算に確信が持てない表記(「応相談」「時給2,000円〜」「50000 USD (YEAR)」など)は
+ * 一切加工せず、元の文字列をそのまま返す。
  */
 
-/** 「<金額>〜<金額> JPY (YEAR)」/「<金額> JPY (YEAR)」だけを対象にする。 */
-const ANNUAL_JPY_PATTERN =
-  /^\s*([\d,]+)\s*(?:[〜～]\s*([\d,]+)\s*)?JPY\s*\(\s*YEAR\s*\)\s*$/;
+/** 「<金額>[〜<金額>] <通貨> (<単位>)」の形だけを対象にする。 */
+const MACHINE_SALARY_PATTERN =
+  /^\s*([\d,]+)\s*(?:[〜～]\s*([\d,]+)\s*)?([A-Za-z]+)\s*\(\s*([A-Za-z]+)\s*\)\s*$/;
+
+/** 日本円として扱う通貨表記。これ以外(USD等)は換算しない。 */
+const YEN_CURRENCIES = ['JPY', 'YEN'];
+
+/** 単位ごとの日本語の言い方。ここに無い単位(HOUR/DAY/WEEK等)は換算しない。 */
+const UNIT_PREFIXES: Record<string, string> = {
+  YEAR: '年収',
+  MONTH: '月給',
+};
 
 /**
  * 円を「500万円」「1,500万円」の形へ。万で割り切れない場合はnullを返し、
@@ -32,11 +41,20 @@ function toYenDisplay(yen: number): string {
 }
 
 /**
- * 年収表記なら整形した文字列を、それ以外なら元の文字列をそのまま返す。
+ * 機械的な年収・月給表記なら整形した文字列を、それ以外なら元の文字列をそのまま返す。
  */
 export function formatRewardText(text: string): string {
-  const matched = ANNUAL_JPY_PATTERN.exec(text);
+  const matched = MACHINE_SALARY_PATTERN.exec(text);
   if (!matched) return text;
+
+  const currency = matched[3].toUpperCase();
+  const unit = matched[4].toUpperCase();
+
+  // 日本円以外、および年収・月給以外の単位は換算しない(誤変換を避ける)。
+  if (!YEN_CURRENCIES.includes(currency)) return text;
+
+  const prefix = UNIT_PREFIXES[unit];
+  if (prefix === undefined) return text;
 
   const min = Number(matched[1].replace(/,/g, ''));
   const max = matched[2] !== undefined ? Number(matched[2].replace(/,/g, '')) : null;
@@ -47,10 +65,10 @@ export function formatRewardText(text: string): string {
   if (max !== null && (!Number.isFinite(max) || max <= 0)) return text;
 
   if (max === null) {
-    return `年収${toYenDisplay(min)}`;
+    return `${prefix}${toYenDisplay(min)}`;
   }
 
-  return `年収${toYenDisplay(min)}〜${toYenDisplay(max)}`;
+  return `${prefix}${toYenDisplay(min)}〜${toYenDisplay(max)}`;
 }
 
 /**

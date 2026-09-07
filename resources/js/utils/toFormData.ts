@@ -1,4 +1,6 @@
 import { Project, ProjectFormData, ProjectPreviewData, ProjectType } from '../types/project';
+import { splitMediaForForm, resolveMediaForDisplay } from './mediaFromUrl';
+import { employmentTypeDisplay } from './employmentType';
 
 /**
  * reward_text導入前の旧データ用に、数値rewardから表示用の報酬表記を組み立てる。
@@ -15,6 +17,7 @@ export const emptyFormData = (type: ProjectType = 'side_job'): ProjectFormData =
   project_url: '',
   client_name: '',
   media: '',
+  media_other: '',
   category: '',
   description: '',
   applied_date: '',
@@ -42,12 +45,17 @@ export const emptyFormData = (type: ProjectType = 'side_job'): ProjectFormData =
  * 編集フォームの初期値。日付/日時はinput[type=date]用に先頭10文字(YYYY-MM-DD)へ切り詰める。
  */
 export function projectToFormData(project: Project): ProjectFormData {
+  // 「その他」や未設定のときはURLから媒体を補い、
+  // 利用者が入力した未知の媒体名(Green等)は「その他」+自由入力として保持する。
+  const media = splitMediaForForm(resolveMediaForDisplay(project));
+
   return {
     type: project.type,
     name: project.name,
     project_url: project.project_url || '',
     client_name: project.client_name || '',
-    media: project.media || '',
+    media: media.media,
+    media_other: media.mediaOther,
     category: project.category || '',
     description: project.description || '',
     applied_date: project.applied_date ? project.applied_date.slice(0, 10) : '',
@@ -68,7 +76,7 @@ export function projectToFormData(project: Project): ProjectFormData {
     job_type: project.job_type || '',
     location: project.location || '',
     remote_type: project.remote_type || '',
-    employment_type: project.employment_type || '',
+    employment_type: employmentTypeDisplay(project.employment_type) || '',
     contract_type: project.contract_type || '',
     delivery_date: project.delivery_date ? project.delivery_date.slice(0, 10) : '',
   };
@@ -79,13 +87,16 @@ export function projectToFormData(project: Project): ProjectFormData {
  * プレビューはprojectsテーブルへ未保存のため、取得できなかった項目はempty(手入力可能)にする。
  */
 export function previewToFormData(preview: ProjectPreviewData): ProjectFormData {
+  const media = splitMediaForForm(preview.media);
+
   return {
     ...emptyFormData(preview.type),
     project_url: preview.project_url,
     name: preview.name || '',
     description: preview.description || '',
     client_name: preview.client_name || '',
-    media: preview.media || '',
+    media: media.media,
+    media_other: media.mediaOther,
     category: preview.category || '',
     reward: preview.reward !== null ? String(preview.reward) : '',
     reward_text: preview.reward_text || '',
@@ -96,7 +107,7 @@ export function previewToFormData(preview: ProjectPreviewData): ProjectFormData 
     job_type: preview.job_type || '',
     location: preview.location || '',
     remote_type: preview.remote_type || '',
-    employment_type: preview.employment_type || '',
+    employment_type: employmentTypeDisplay(preview.employment_type) || '',
     contract_type: preview.contract_type || '',
     delivery_date: preview.delivery_date ? preview.delivery_date.slice(0, 10) : '',
   };
