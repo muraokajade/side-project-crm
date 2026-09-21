@@ -119,15 +119,15 @@ describe('AppRoot', () => {
     await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
 
     // 空状態からURL取込・手入力の両方へ進める。
-    expect(screen.getAllByRole('button', { name: 'URLから登録' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '求人URLを登録' }).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '手入力で登録' })).toBeInTheDocument();
   });
 
-  it('空状態の「URLから登録」からURL取込モーダルを開ける', async () => {
+  it('空状態の「求人URLを登録」からURL取込モーダルを開ける', async () => {
     render(<AppRoot />);
     await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
 
-    const buttons = screen.getAllByRole('button', { name: 'URLから登録' });
+    const buttons = screen.getAllByRole('button', { name: '求人URLを登録' });
     fireEvent.click(buttons[buttons.length - 1]);
 
     expect(screen.getByText('案件ページのURL')).toBeInTheDocument();
@@ -271,7 +271,7 @@ describe('AppRoot', () => {
     render(<AppRoot />);
     await waitFor(() => expect(screen.getByText('まだ案件がありません')).toBeInTheDocument());
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'URLから登録' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '求人URLを登録' })[0]);
     fireEvent.change(screen.getByPlaceholderText('https://...'), {
       target: { value: 'https://type.jp/entry_history/entry_message_list/12345/' },
     });

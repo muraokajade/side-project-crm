@@ -18,6 +18,11 @@ describe('AuthScreen', () => {
     vi.unstubAllGlobals();
   });
 
+  it('サービス名としてJobHuntを表示する', () => {
+    render(<AuthScreen onAuthenticated={() => {}} />);
+    expect(screen.getByRole('heading', { name: 'JobHunt' })).toBeInTheDocument();
+  });
+
   it('初期表示はログインフォームで、確認用パスワード欄は出さない', () => {
     render(<AuthScreen onAuthenticated={() => {}} />);
 

@@ -127,8 +127,15 @@ describe('ProjectCard 一覧の通常表示', () => {
   it('クライアント名が無ければ媒体を代わりに表示する', () => {
     render(<ProjectCard project={makeProject({ client_name: null, media: 'CrowdWorks' })} variant="active" />);
 
-    expect(screen.getByText('媒体')).toBeInTheDocument();
+    // 一覧は密度を優先し、会社名スロットは1つだけ。ラベルは付けない。
     expect(screen.getByText('CrowdWorks')).toBeInTheDocument();
+  });
+
+  it('クライアント名があれば媒体は一覧に出さない', () => {
+    render(<ProjectCard project={makeProject({ client_name: '株式会社サンプル', media: 'CrowdWorks' })} variant="active" />);
+
+    expect(screen.getByText('株式会社サンプル')).toBeInTheDocument();
+    expect(screen.queryByText('CrowdWorks')).not.toBeInTheDocument();
   });
 
   it('通常表示では詳細のみの項目(カテゴリ・応募日・次アクション)を出さない', () => {
@@ -150,13 +157,13 @@ describe('ProjectCard 一覧の通常表示', () => {
 });
 
 describe('ProjectCard 募集内容の抜粋', () => {
-  it('一覧には概要の全文を出さず、2行クランプ付きの抜粋だけを出す', () => {
+  it('一覧には概要の全文を出さず、1行truncateの抜粋だけを出す', () => {
     const long = 'あ'.repeat(400);
     render(<ProjectCard project={makeProject({ description: long })} variant="active" />);
 
     const excerpt = screen.getByText(/^あ+…$/);
     expect(excerpt.tagName).toBe('P');
-    expect(excerpt.className).toContain('line-clamp-2');
+    expect(excerpt.className).toContain('truncate');
     // DOMにも全文を載せない(見た目のクランプだけに頼らない)。
     expect(excerpt.textContent!.length).toBeLessThan(long.length);
     expect(screen.queryByText(long)).not.toBeInTheDocument();
@@ -177,8 +184,8 @@ describe('ProjectCard 募集内容の抜粋', () => {
   it('概要が無ければ抜粋行自体を出さない', () => {
     const { container } = render(<ProjectCard project={makeProject({ description: null })} variant="active" />);
 
-    // 抜粋の段落そのものが出ない(案件名にも同じクランプが付くため、pに限定して確認する)。
-    expect(container.querySelector('p.line-clamp-2')).toBeNull();
+    // 抜粋の段落そのものが出ない(案件名にも同じtruncateが付くため、pに限定して確認する)。
+    expect(container.querySelector('p.truncate')).toBeNull();
   });
 
   it('詳細を開くと概要の全文を表示する', () => {
@@ -218,9 +225,9 @@ describe('ProjectCard 応募締切の切迫度', () => {
     expect(el.className).not.toContain('text-amber-600');
   });
 
-  it('締切が無ければ応募締切の行を出さない', () => {
+  it('締切が無ければ締切の表示を出さない', () => {
     render(<ProjectCard project={makeProject({ deadline: null })} variant="active" />);
-    expect(screen.queryByText('応募締切')).not.toBeInTheDocument();
+    expect(screen.queryByText('締切')).not.toBeInTheDocument();
   });
 });
 
@@ -410,26 +417,33 @@ describe('ProjectCard 媒体の自由入力値', () => {
 });
 
 describe('ProjectCard 一覧の読みやすさ', () => {
-  it('長い案件名は2行までのクランプで省略する', () => {
+  it('長い案件名は1行truncateで省略する', () => {
     const longName = 'とても長い案件名'.repeat(12);
     render(<ProjectCard project={makeProject({ name: longName })} variant="active" />);
 
     const heading = screen.getByRole('heading', { level: 3 });
-    expect(heading.className).toContain('line-clamp-2');
-    expect(heading.className).toContain('break-words');
+    // 一覧は1案件=1行の密度を保つため、案件名は折り返さず1行で切る。
+    expect(heading.className).toContain('truncate');
+    expect(heading.className).not.toContain('line-clamp-2');
   });
 
-  it('一覧では報酬・応募締切・媒体・クライアントを出す', () => {
+  it('一覧では会社名・報酬・締切を値だけで出す(ラベルで嵩張らせない)', () => {
     render(<ProjectCard project={makeProject({
       reward_text: '年収500万円', deadline: '2099-12-31',
       media: 'type', client_name: '株式会社サンプル',
     })} variant="active" />);
 
-    expect(screen.getByText('報酬')).toBeInTheDocument();
-    expect(screen.getByText('応募締切')).toBeInTheDocument();
-    expect(screen.getByText('媒体')).toBeInTheDocument();
-    expect(screen.getByText('クライアント')).toBeInTheDocument();
     expect(screen.getByText('株式会社サンプル')).toBeInTheDocument();
+    expect(screen.getByText('年収500万円')).toBeInTheDocument();
+    expect(screen.getByText('2099-12-31')).toBeInTheDocument();
+
+    // 締切だけは数値の意味が伝わらないため、短いラベルを添える。
+    expect(screen.getByText('締切')).toBeInTheDocument();
+
+    // 「報酬」「クライアント」等の項目名は一覧に出さない(詳細に任せる)。
+    expect(screen.queryByText('報酬')).not.toBeInTheDocument();
+    expect(screen.queryByText('クライアント')).not.toBeInTheDocument();
+    expect(screen.queryByText('応募締切')).not.toBeInTheDocument();
   });
 
   it('一覧にはURL全文や職種・勤務地・雇用形態を常時出さない', () => {

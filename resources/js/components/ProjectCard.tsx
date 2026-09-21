@@ -79,20 +79,6 @@ const DEADLINE_CLASSES: Record<DeadlineState, string> = {
 };
 
 /**
- * 一覧に出す「項目名 + 値」。値が無い項目は出さない。
- * 幅が狭いときは値を折り返して読めるようにする(切り詰めない)。
- */
-function MetaItem({ label, value, className }: { label: string; value: string | null; className?: string }) {
-  if (!value) return null;
-  return (
-    <div className="flex items-baseline gap-1.5 min-w-0">
-      <dt className="text-slate-400 shrink-0">{label}</dt>
-      <dd className={`min-w-0 break-words ${className ?? 'text-slate-600'}`}>{value}</dd>
-    </div>
-  );
-}
-
-/**
  * 詳細の「項目名 + 値」。値が無い項目は出さない。
  * 募集内容の段落・改行は whitespace-pre-wrap で維持し、長い値は折り返す。
  */
@@ -123,64 +109,67 @@ export default function ProjectCard({
   const deadline = p.deadline?.slice(0, 10) ?? null;
   // DBの媒体が古い値でも、案件URLから判定できる場合はそちらで表示する(DBは書き換えない)。
   const media = resolveMediaForDisplay(p);
+  // 一覧の1スロットに収めるため、クライアント名が無い案件は媒体で代替する。
+  const company = p.client_name || media;
+  const reward = rewardDisplay(p);
   const detailId = `project-detail-${p.id}`;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md hover:border-slate-300">
       {/*
-        通常表示は「案件名 → バッジ → 報酬/締切/媒体/クライアント → 募集内容の抜粋 → 詳細ボタン」の順。
-        URL全文や職種・勤務地・雇用形態は一覧に常時並べず、詳細を開いたときだけ出す。
+        一覧は「読む」ではなく「探す」ための密度にする。
+        PCでは1案件=1行、スマホでは折り返して縦積みにする。
+        媒体・カテゴリ・URL全文・職種等は一覧に出さず、詳細を開いたときだけ出す。
       */}
-      <div className="px-4 py-3">
-        {/* 1. 案件名(最大2行) */}
-        <div className="flex items-start gap-2">
-          {p.is_favorite && (
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 mt-0.5 text-amber-400 shrink-0" role="img" aria-label="お気に入り">
-              <path d="M10 1.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z" />
-            </svg>
-          )}
-          <h3 className="min-w-0 flex-1 font-medium text-slate-800 line-clamp-2 break-words">{p.name}</h3>
+      <div className="px-3 py-2">
+        {/*
+          PCでは1行に収め、スマホでは自然に縦へ折り返す。
+          並びは 案件名 → ステータス → 会社名 → 報酬 → 締切 → 詳細。
+          会社名は無ければ媒体で代替し、1スロットに収める(項目は増やさない)。
+        */}
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className="flex items-center gap-1.5 min-w-0 md:flex-1">
+            {p.is_favorite && (
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-400 shrink-0" role="img" aria-label="お気に入り">
+                <path d="M10 1.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z" />
+              </svg>
+            )}
+            <h3 className="min-w-0 flex-1 text-sm font-medium text-slate-800 truncate">{p.name}</h3>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs md:shrink-0 md:flex-nowrap">
+            <span className={`shrink-0 px-2 py-0.5 rounded ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
+              {p.status}
+            </span>
+            <span className={`shrink-0 px-1.5 py-0.5 rounded ${TYPE_BADGE_CLASSES[p.type]}`}>
+              {TYPE_LABELS[p.type]}
+            </span>
+            {company && (
+              <span className="min-w-0 max-w-[10rem] truncate text-slate-600">{company}</span>
+            )}
+            {reward && <span className="shrink-0 text-slate-700 font-medium">{reward}</span>}
+            {deadline && (
+              <span className="shrink-0 whitespace-nowrap">
+                <span className="text-slate-400">締切 </span>
+                <span className={DEADLINE_CLASSES[deadlineState(deadline)]}>{deadline}</span>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setExpanded(v => !v)}
+              aria-expanded={expanded}
+              aria-controls={detailId}
+              className="shrink-0 px-2 py-1 text-xs text-slate-600 border border-slate-300 rounded hover:bg-slate-50 whitespace-nowrap"
+            >
+              {expanded ? '詳細を閉じる' : '詳細を開く'}
+            </button>
+          </div>
         </div>
 
-        {/* 2. 種別・ステータスのバッジ */}
-        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-          <span className={`px-2 py-0.5 rounded text-xs ${TYPE_BADGE_CLASSES[p.type]}`}>
-            {TYPE_LABELS[p.type]}
-          </span>
-          <span className={`px-2 py-0.5 rounded text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
-            {p.status}
-          </span>
-        </div>
-
-        {/* 3. 報酬・応募締切・媒体・クライアント(狭い幅では1列に折り返す) */}
-        <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <MetaItem label="報酬" value={rewardDisplay(p)} className="text-slate-700 font-medium" />
-          <MetaItem
-            label="応募締切"
-            value={deadline}
-            className={deadline ? DEADLINE_CLASSES[deadlineState(deadline)] : undefined}
-          />
-          <MetaItem label="媒体" value={media} />
-          <MetaItem label="クライアント" value={p.client_name} />
-        </dl>
-
-        {/* 4. 募集内容の抜粋(最大2行) */}
+        {/* 概要は1行だけ。全文は詳細に任せる。 */}
         {excerpt && (
-          <p className="mt-2 text-sm text-slate-500 line-clamp-2 break-words">{excerpt}</p>
+          <p className="mt-0.5 text-xs text-slate-500 truncate">{excerpt}</p>
         )}
-
-        {/* 5. 詳細を開く/閉じる */}
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setExpanded(v => !v)}
-            aria-expanded={expanded}
-            aria-controls={detailId}
-            className="px-2.5 py-1.5 text-xs text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50 whitespace-nowrap"
-          >
-            {expanded ? '詳細を閉じる' : '詳細を開く'}
-          </button>
-        </div>
       </div>
 
       {expanded && (

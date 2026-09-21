@@ -73,7 +73,7 @@ export default function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-white rounded-lg shadow-sm p-6">
-        <h1 className="text-xl font-semibold text-slate-800 mb-1">転職＋副業 管理</h1>
+        <h1 className="text-xl font-semibold text-slate-800 mb-1">JobHunt</h1>
         <p className="text-sm text-slate-500 mb-5">
           {mode === 'login' ? 'ログインしてください。' : 'アカウントを作成します。'}
         </p>

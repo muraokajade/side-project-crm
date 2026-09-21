@@ -284,22 +284,13 @@ function AppRoot() {
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-4">
         <div className="max-w-7xl mx-auto flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h1 className="text-xl font-semibold text-slate-800">転職＋副業 管理</h1>
+          <h1 className="text-xl font-semibold text-slate-800">JobHunt</h1>
 
-          <div className="flex flex-col items-start gap-2 md:items-end">
-          {/* 主操作(登録)だけをボタンとして目立たせる。 */}
-          <div className="flex items-center gap-2">
-            <button onClick={() => setImportOpen(true)}
-              className="px-3 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700">
-              URLから登録
-            </button>
-            <button onClick={openCreate}
-              className="px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50">
-              手入力
-            </button>
-          </div>
-
-          {/* ゴミ箱・ログアウトは誤操作しにくいよう、主操作と分けた控えめな並びにまとめる。 */}
+          <div className="flex flex-col items-stretch gap-2 md:items-end">
+          {/*
+            登録ボタンはヘッダーから一覧ツールバーへ移した。
+            ヘッダーは「今どのアカウントか」と離脱系の操作だけに絞る。
+          */}
           <div className="flex items-center gap-3 text-xs text-slate-500 max-w-full">
             <span className="truncate">{authUser.email}</span>
             <span aria-hidden="true" className="text-slate-300">|</span>
@@ -318,62 +309,81 @@ function AppRoot() {
       {view === 'trash' ? (
         <TrashView onClose={() => setView('list')} />
       ) : (
-        <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            {[
-              { label: '総数', value: summary.total, color: 'border-t-slate-400' },
-              { label: '対応中', value: summary.open, color: 'border-t-blue-400' },
-              { label: '終了', value: summary.closed, color: 'border-t-gray-400' },
-              { label: 'お気に入り', value: summary.favorite, color: 'border-t-amber-400' },
-            ].map(card => (
-              <div key={card.label} className={`bg-white rounded-lg shadow-sm p-4 border-t-4 ${card.color}`}>
-                <p className="text-sm text-slate-500">{card.label}</p>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{card.value}</p>
+        <main className="max-w-7xl mx-auto px-4 md:px-6 py-4 space-y-3">
+          {/*
+            ツールバー: 主CTA(求人URLを登録) + 件数サマリー + 絞り込み。
+            一覧の直前にまとめることで、登録→絞り込み→一覧の視線が上から下へ一直線になる。
+            集計はカードをやめ1行の数値列にし、一覧の開始位置を大きく引き上げた。
+          */}
+          <div className="bg-white rounded-lg shadow-sm divide-y divide-slate-100">
+            <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setImportOpen(true)}
+                  className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-md shadow-sm hover:bg-slate-700 whitespace-nowrap">
+                  求人URLを登録
+                </button>
+                <button onClick={openCreate}
+                  className="px-3 py-2 text-sm text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50 whitespace-nowrap">
+                  手入力
+                </button>
               </div>
-            ))}
+
+              <dl className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-slate-500">
+                {[
+                  { label: '総数', value: summary.total },
+                  { label: '対応中', value: summary.open },
+                  { label: '終了', value: summary.closed },
+                  { label: 'お気に入り', value: summary.favorite },
+                ].map((item, i) => (
+                  <div key={item.label} className="flex items-baseline gap-1">
+                    {i > 0 && <span aria-hidden="true" className="mr-2 text-slate-300">|</span>}
+                    <dt>{item.label}</dt>
+                    <dd className="text-sm font-semibold text-slate-800">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
+              <div className="flex gap-1.5 shrink-0">
+                {TYPE_TABS.map(tab => (
+                  <button
+                    key={tab.value}
+                    onClick={() => setTypeFilter(tab.value)}
+                    className={`px-3 py-1.5 rounded-md text-sm ${
+                      typeFilter === tab.value
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div className="relative flex-1 min-w-0">
+                <input
+                  type="text"
+                  placeholder="案件名・クライアント・概要・メモを検索"
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  className="w-full border border-slate-300 rounded-md pl-3 pr-9 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    aria-label="検索をクリア"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Type tabs & Search */}
-          <div className="bg-white rounded-lg shadow-sm p-4 space-y-3">
-            <div className="flex gap-2">
-              {TYPE_TABS.map(tab => (
-                <button
-                  key={tab.value}
-                  onClick={() => setTypeFilter(tab.value)}
-                  className={`px-3 py-1.5 rounded-md text-sm ${
-                    typeFilter === tab.value
-                      ? 'bg-slate-800 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="案件名・クライアント・概要・メモを検索"
-                value={searchInput}
-                onChange={e => setSearchInput(e.target.value)}
-                className="w-full border border-slate-300 rounded-md pl-3 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              />
-              {searchInput && (
-                <button
-                  type="button"
-                  onClick={clearSearch}
-                  aria-label="検索をクリア"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Project List */}
-          <div className="space-y-2">
+          {/* Project List(行として読める密度にするため行間は最小限にする) */}
+          <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-slate-700 px-1">
               案件一覧 <span className="text-slate-400 font-normal">{projects.length}件</span>
             </h2>
@@ -399,9 +409,9 @@ function AppRoot() {
                     <button
                       type="button"
                       onClick={() => setImportOpen(true)}
-                      className="px-4 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700"
+                      className="px-4 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-md shadow-sm hover:bg-slate-700"
                     >
-                      URLから登録
+                      求人URLを登録
                     </button>
                     <button
                       type="button"
