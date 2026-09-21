@@ -82,6 +82,13 @@ export interface ProjectFormData {
   delivery_date: string;
 }
 
+/** 取込先URLと同一URLで既に登録済みの案件(重複警告用。同一ユーザー・論理削除済みを除く)。 */
+export interface DuplicateProjectCandidate {
+  id: number;
+  name: string;
+  status: string;
+}
+
 /**
  * POST /api/import/previewのレスポンス(`data`)。projectsテーブルには未保存の確認用データ。
  */
@@ -108,4 +115,6 @@ export interface ProjectPreviewData {
   fetched_at: string;
   fetch_status: 'success' | 'partial';
   warnings: string[];
+  /** 古いレスポンスにも耐えられるよう任意にしている。未指定は「重複なし」と同義。 */
+  duplicate_candidates?: DuplicateProjectCandidate[];
 }

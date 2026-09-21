@@ -20,7 +20,7 @@ describe('UrlImportModal', () => {
 
   const fillUrlAndSubmit = (url: string) => {
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: url } });
-    fireEvent.click(screen.getByRole('button', { name: '取得する' }));
+    fireEvent.click(screen.getByRole('button', { name: '求人情報を読み込む' }));
   };
 
   it('preview成功時、取得内容をonPreviewReadyへフォームデータとして渡す', async () => {
@@ -63,7 +63,7 @@ describe('UrlImportModal', () => {
     expect(formData.reward).toBe('60000');
     expect(formData.reward_text).toBe('固定報酬制 60,000円');
     expect(formData.project_url).toBe('https://example.com/job/1');
-    expect(notice).toEqual({ fetchStatus: 'success', warnings: [] });
+    expect(notice).toEqual({ fetchStatus: 'success', warnings: [], duplicates: [] });
   });
 
   it('fetch_status=partialとwarningsをそのままnoticeへ渡す', async () => {
@@ -143,7 +143,7 @@ describe('UrlImportModal', () => {
     render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://example.com/' } });
-    const button = screen.getByRole('button', { name: '取得する' });
+    const button = screen.getByRole('button', { name: '求人情報を読み込む' });
     fireEvent.click(button);
     fireEvent.click(button);
     fireEvent.click(button);
@@ -177,7 +177,7 @@ describe('UrlImportModal', () => {
     expect(screen.getByText(GUIDANCE)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '手入力で続ける' })).toBeInTheDocument();
     // 事前判定の段階では取得も試せるが、主導線ではない。
-    expect(screen.getByRole('button', { name: '取得する' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '求人情報を読み込む' })).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -274,7 +274,7 @@ describe('UrlImportModal', () => {
       target: { value: 'https://type.jp/job-1/1344057_detail/' },
     });
 
-    expect(screen.getByRole('button', { name: '取得する' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '求人情報を読み込む' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '手入力で続ける' })).not.toBeInTheDocument();
     expect(screen.queryByText(GUIDANCE)).not.toBeInTheDocument();
   });
@@ -348,7 +348,7 @@ describe('UrlImportModal', () => {
 
     // 「取得中...」ではなく通常の取得ボタンに戻っている。
     expect(screen.queryByText('取得中...')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '取得する' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '求人情報を読み込む' })).toBeEnabled();
   });
 
   it('キャンセル後に再度取得できる(多重送信ガードが残らない)', async () => {

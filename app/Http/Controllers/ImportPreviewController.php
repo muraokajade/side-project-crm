@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\UrlImport\UrlFetchException;
 use App\Exceptions\UrlImport\UrlSafetyException;
 use App\Http\Requests\ImportPreviewRequest;
+use App\Models\Project;
 use App\Services\UrlImport\ManualEntryUrlDetector;
 use App\Services\UrlImport\UrlImportPreviewService;
 use Illuminate\Http\JsonResponse;
@@ -74,7 +75,38 @@ class ImportPreviewController extends Controller
             ], 500);
         }
 
+        // 同じ利用者が既に同一URLで登録済みの案件があれば警告用に添える(取得自体は成功扱い)。
+        $data['duplicate_candidates'] = $this->findDuplicateCandidates($request->user()->id, $url);
+
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * 同じ利用者が既に登録している、同一URLの案件を返す。
+     *
+     * - Project::scopeOwnedBy()を通すため、他ユーザーの案件は決して含まれない。
+     * - SoftDeletesのグローバルスコープにより、ゴミ箱の案件は自動的に除外される。
+     * - SELECTのみ。「previewはprojectsテーブルを書き換えない」という既存方針は変えない。
+     * - URLの正規化(末尾スラッシュ・utm_*の除去等)は行わず完全一致のみを見る。
+     *   過剰検知で「別の案件なのに重複と言われる」状態を避けるため。
+     * - 重複があっても登録は禁止しない(同じ求人へ再応募する正当なケースがあるため)。
+     *
+     * @return list<array{id: int, name: string, status: string}>
+     */
+    private function findDuplicateCandidates(int $userId, string $url): array
+    {
+        return Project::query()
+            ->ownedBy($userId)
+            ->where('project_url', $url)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['id', 'name', 'status'])
+            ->map(fn (Project $project) => [
+                'id' => $project->id,
+                'name' => $project->name,
+                'status' => $project->status,
+            ])
+            ->all();
     }
 
     /**

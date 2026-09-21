@@ -98,6 +98,7 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
         onPreviewReady(previewToFormData(data), {
           fetchStatus: data.fetch_status,
           warnings: data.warnings,
+          duplicates: data.duplicate_candidates ?? [],
         });
         reset();
         return;
@@ -193,7 +194,7 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
               <>
                 {/* 取得しても失敗する可能性が高いため、手入力を主ボタンにする。 */}
                 <button type="submit" disabled={loading} className={secondaryClass}>
-                  {loading ? '取得中...' : outcome?.kind === 'manual' ? '再試行' : '取得する'}
+                  {loading ? '取得中...' : outcome?.kind === 'manual' ? '再試行' : '求人情報を読み込む'}
                 </button>
                 <button type="button" onClick={handleManualEntry} className={primaryClass}>
                   手入力で続ける
@@ -210,7 +211,7 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
               </>
             ) : (
               <button type="submit" disabled={loading} className={primaryClass}>
-                {loading ? '取得中...' : '取得する'}
+                {loading ? '取得中...' : '求人情報を読み込む'}
               </button>
             )}
           </div>

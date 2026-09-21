@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use App\Observers\ProjectObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+#[ObservedBy(ProjectObserver::class)]
 class Project extends Model
 {
     use SoftDeletes;
@@ -62,6 +66,16 @@ class Project extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * このProjectのstatus遷移履歴(古い順)。書き込みはProjectObserverが行う。
+     *
+     * @return HasMany<ProjectStatusHistory, $this>
+     */
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(ProjectStatusHistory::class)->orderBy('changed_at')->orderBy('id');
     }
 
     /**

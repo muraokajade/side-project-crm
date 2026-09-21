@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Project, ProjectFormData, ProjectType } from './types/project';
+import { DuplicateProjectCandidate, Project, ProjectFormData, ProjectType } from './types/project';
 import { MEDIA_OPTIONS, CATEGORY_OPTIONS, statusOptionsForType } from './constants/projectOptions';
 import { emptyFormData, projectToFormData } from './utils/toFormData';
 import { formatRewardText } from './utils/rewardDisplay';
@@ -8,6 +8,8 @@ import { splitMediaForForm, FALLBACK_MEDIA } from './utils/mediaFromUrl';
 export interface ProjectModalNotice {
   fetchStatus: 'success' | 'partial';
   warnings: string[];
+  /** 同一URLで既に登録済みの案件。あれば警告を出すが、登録は禁止しない。 */
+  duplicates?: DuplicateProjectCandidate[];
 }
 
 interface ProjectModalProps {
@@ -95,6 +97,23 @@ export default function ProjectModal({
         <h2 className="text-lg font-semibold text-slate-800 mb-4">
           {mode === 'create' ? '案件を登録' : '案件を編集'}
         </h2>
+
+        {/*
+          重複警告はフォーム最上部に置く。取得成功バナーより先に目へ入らないと
+          「取得できた」だけを見て、そのまま重複登録してしまうため。
+          登録自体は禁止しない(同じ求人へ再応募する正当なケースがある)。
+        */}
+        {notice && notice.duplicates && notice.duplicates.length > 0 && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 text-amber-900 p-3 text-sm">
+            <p className="font-semibold">⚠️ この求人はすでに登録されています</p>
+            <ul className="mt-1 space-y-0.5">
+              {notice.duplicates.map(d => (
+                <li key={d.id}>「{d.name}」（{d.status}）</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs">必要な場合はそのまま登録できます。</p>
+          </div>
+        )}
 
         {notice && (
           <div className={`mb-4 rounded-md p-3 text-sm ${notice.fetchStatus === 'partial' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>

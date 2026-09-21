@@ -361,4 +361,87 @@ describe('ProjectModal', () => {
 
     expect(screen.getByText('表示: 月給35万円')).toBeInTheDocument();
   });
+
+  it('重複候補がある場合、警告と案件名・ステータスを表示する', () => {
+    render(
+      <ProjectModal
+        open
+        mode="create"
+        project={null}
+        notice={{
+          fetchStatus: 'success',
+          warnings: [],
+          duplicates: [
+            { id: 1, name: '株式会社サンプル バックエンド', status: '応募済み' },
+            { id: 2, name: '株式会社サンプル バックエンド', status: '気になる' },
+          ],
+        }}
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+
+    expect(screen.getByText(/この求人はすでに登録されています/)).toBeInTheDocument();
+    expect(screen.getByText('「株式会社サンプル バックエンド」（応募済み）')).toBeInTheDocument();
+    expect(screen.getByText('「株式会社サンプル バックエンド」（気になる）')).toBeInTheDocument();
+    expect(screen.getByText('必要な場合はそのまま登録できます。')).toBeInTheDocument();
+  });
+
+  it('重複候補がない場合、重複警告を表示しない', () => {
+    render(
+      <ProjectModal
+        open
+        mode="create"
+        project={null}
+        notice={{ fetchStatus: 'success', warnings: [], duplicates: [] }}
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+
+    expect(screen.queryByText(/この求人はすでに登録されています/)).not.toBeInTheDocument();
+  });
+
+  it('重複警告が出ていても登録ボタンは押せる(登録を禁止しない)', () => {
+    render(
+      <ProjectModal
+        open
+        mode="create"
+        project={null}
+        notice={{
+          fetchStatus: 'success',
+          warnings: [],
+          duplicates: [{ id: 1, name: '重複案件', status: '気になる' }],
+        }}
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '登録' })).not.toBeDisabled();
+  });
+
+  it('重複警告は取得成功バナーより前に表示される', () => {
+    const { container } = render(
+      <ProjectModal
+        open
+        mode="create"
+        project={null}
+        notice={{
+          fetchStatus: 'success',
+          warnings: [],
+          duplicates: [{ id: 1, name: '重複案件', status: '気になる' }],
+        }}
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+
+    const duplicate = screen.getByText(/この求人はすでに登録されています/);
+    const success = screen.getByText(/URLからの取得に成功しました/);
+
+    // 成功バナーだけを見てそのまま登録するのを防ぐため、重複警告が先に来ること。
+    expect(duplicate.compareDocumentPosition(success) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container).toBeTruthy();
+  });
 });
