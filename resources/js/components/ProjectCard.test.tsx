@@ -235,13 +235,13 @@ describe('ProjectCard ステータス表示', () => {
   it('career新ステータス「内定」を色付きバッジで表示する', () => {
     render(<ProjectCard project={makeProject({ type: 'career', status: '内定' })} variant="active" />);
     const badge = screen.getByText('内定');
-    expect(badge.className).toContain('bg-green-100');
+    expect(badge.className).toContain('bg-green-50');
   });
 
   it('side_job新ステータス「契約」を色付きバッジで表示する', () => {
     render(<ProjectCard project={makeProject({ status: '契約' })} variant="active" />);
     const badge = screen.getByText('契約');
-    expect(badge.className).toContain('bg-violet-100');
+    expect(badge.className).toContain('bg-violet-50');
   });
 });
 

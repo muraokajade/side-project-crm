@@ -345,6 +345,10 @@ function AppRoot() {
             </div>
 
             <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
+              {/*
+                主CTA(求人URLを登録)と同じ濃色にすると重要度が競合するため、
+                選択中のタブはslateの淡い面と文字の濃さだけで示す。
+              */}
               <div className="flex gap-1.5 shrink-0">
                 {TYPE_TABS.map(tab => (
                   <button
@@ -352,8 +356,8 @@ function AppRoot() {
                     onClick={() => setTypeFilter(tab.value)}
                     className={`px-3 py-1.5 rounded-md text-sm ${
                       typeFilter === tab.value
-                        ? 'bg-slate-800 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-slate-200 text-slate-900 font-medium'
+                        : 'text-slate-500 hover:bg-slate-100'
                     }`}
                   >
                     {tab.label}

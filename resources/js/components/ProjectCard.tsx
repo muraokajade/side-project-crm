@@ -22,9 +22,13 @@ const TYPE_LABELS: Record<Project['type'], string> = {
   side_job: '副業',
 };
 
+/**
+ * 種別バッジ。ラベル文字(転職/副業)自体が種別を示すため、色は補助に留める。
+ * 一覧で繰り返し並んでも視界を奪わないよう、既存の色相のまま最も淡い段階にする。
+ */
 const TYPE_BADGE_CLASSES: Record<Project['type'], string> = {
-  career: 'bg-purple-100 text-purple-700',
-  side_job: 'bg-emerald-100 text-emerald-700',
+  career: 'bg-purple-50 text-purple-600',
+  side_job: 'bg-emerald-50 text-emerald-600',
 };
 
 /**
