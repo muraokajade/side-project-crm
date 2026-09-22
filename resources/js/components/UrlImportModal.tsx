@@ -29,7 +29,8 @@ const MANUAL_ENTRY_GUIDANCE =
 
 export default function UrlImportModal({ open, onClose, onPreviewReady, onManualEntry }: UrlImportModalProps) {
   const [url, setUrl] = useState('');
-  const [type, setType] = useState<ProjectType>('side_job');
+  // 新規と同じく、URL登録でも種別は未選択から始める(既定値のまま登録させない)。
+  const [type, setType] = useState<ProjectType | ''>('');
   const [loading, setLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [outcome, setOutcome] = useState<Outcome>(null);
@@ -44,7 +45,7 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
 
   const reset = () => {
     setUrl('');
-    setType('side_job');
+    setType('');
     setValidationError('');
     setOutcome(null);
     // 取得中にキャンセルされてもローディングが残らないようにする
@@ -72,6 +73,10 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
       setValidationError('URLを入力してください。');
       return;
     }
+    if (!type) {
+      setValidationError('種別を選んでください');
+      return;
+    }
     onManualEntry(trimmed, type);
     reset();
   };
@@ -81,6 +86,11 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
     if (isLoadingRef.current) return;
     if (!url.trim()) {
       setValidationError('URLを入力してください。');
+      return;
+    }
+    // 種別が未選択のままでは取得処理を開始しない。
+    if (!type) {
+      setValidationError('種別を選んでください');
       return;
     }
 
@@ -171,14 +181,19 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
           </div>
           <div>
             <label htmlFor="import-type" className="block text-sm font-medium text-slate-700 mb-1">種別</label>
+            {/* 「選ぶ」は案内であって保存値・API送信値ではないため、選び直せないようdisabledにする。
+                autoComplete="off": Chromeが住所系ドロップダウンと誤判定し、
+                自動入力の案内を値の上に重ねて表示するのを抑止する。 */}
             <select
               id="import-type"
               value={type}
               onChange={e => setType(e.target.value as ProjectType)}
+              autoComplete="off"
               className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
             >
-              <option value="side_job">副業</option>
+              <option value="" disabled>選ぶ</option>
               <option value="career">転職</option>
+              <option value="side_job">副業</option>
             </select>
           </div>
           <p className="text-xs text-slate-400">

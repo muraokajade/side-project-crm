@@ -18,8 +18,14 @@ describe('UrlImportModal', () => {
     vi.unstubAllGlobals();
   });
 
-  const fillUrlAndSubmit = (url: string) => {
+  // 種別は未選択から始まるため、取得前に明示的に選ぶ(既定値では送信できない)。
+  const selectType = (value: 'career' | 'side_job') => {
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value } });
+  };
+
+  const fillUrlAndSubmit = (url: string, type: 'career' | 'side_job' = 'side_job') => {
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: url } });
+    selectType(type);
     fireEvent.click(screen.getByRole('button', { name: '求人情報を読み込む' }));
   };
 
@@ -143,6 +149,7 @@ describe('UrlImportModal', () => {
     render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://example.com/' } });
+    selectType('side_job');
     const button = screen.getByRole('button', { name: '求人情報を読み込む' });
     fireEvent.click(button);
     fireEvent.click(button);
@@ -369,5 +376,66 @@ describe('UrlImportModal', () => {
     // 再度送信できる(ガードが解除されている)。
     fillUrlAndSubmit('https://example.com/job/2');
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  // ---- 種別の未選択(選ぶ / 転職 / 副業) ---------------------------------
+
+  it('種別は未選択から始まり、先頭の「選ぶ」はdisabledで保存値にならない', () => {
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    const select = screen.getByLabelText('種別') as HTMLSelectElement;
+    expect(select.value).toBe('');
+
+    const options = Array.from(select.options).map(o => ({ value: o.value, text: o.text, disabled: o.disabled }));
+    expect(options).toEqual([
+      { value: '', text: '選ぶ', disabled: true },
+      { value: 'career', text: '転職', disabled: false },
+      { value: 'side_job', text: '副業', disabled: false },
+    ]);
+  });
+
+  it('種別が未選択のまま「求人情報を読み込む」を押すと、取得せずに選択を促す', () => {
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://example.com/job/1' } });
+    fireEvent.click(screen.getByRole('button', { name: '求人情報を読み込む' }));
+
+    expect(screen.getByText('種別を選んでください')).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('種別が未選択のまま「手入力で続ける」を押しても、手入力へ進まない', () => {
+    const onManualEntry = vi.fn();
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={onManualEntry} />);
+
+    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: TYPE_ENTRY_URL } });
+    fireEvent.click(screen.getByRole('button', { name: '手入力で続ける' }));
+
+    expect(screen.getByText('種別を選んでください')).toBeInTheDocument();
+    expect(onManualEntry).not.toHaveBeenCalled();
+  });
+
+  it('選んだ種別はpreviewリクエストへそのまま渡る', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(200, {
+      data: {
+        project_url: 'https://example.com/job/1', type: 'career', name: 'タイトル', description: null,
+        client_name: null, media: null, category: null, reward: null, reward_text: null, working_hours: null,
+        applicant_count: null, recruitment_count: null, deadline: null, job_type: null, location: null,
+        remote_type: null, employment_type: null, contract_type: null, delivery_date: null,
+        fetched_at: '2026-08-22T00:00:00+00:00', fetch_status: 'success', warnings: [],
+      },
+    }));
+
+    const onPreviewReady = vi.fn();
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={onPreviewReady} onManualEntry={() => {}} />);
+
+    fillUrlAndSubmit('https://example.com/job/1', 'career');
+
+    await waitFor(() => expect(onPreviewReady).toHaveBeenCalledTimes(1));
+    // 送信ボディに選択した種別が含まれる。
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(init?.body)).toContain('career');
+    // preview後の登録フォームにも種別が引き継がれる。
+    expect(onPreviewReady.mock.calls[0][0].type).toBe('career');
   });
 });
