@@ -135,7 +135,7 @@ describe('ProjectModal', () => {
     render(
       <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
     );
-    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'career' } });
+    fireEvent.change(screen.getByLabelText('種別（転職・副業）'), { target: { value: 'career' } });
 
     const status = screen.getByLabelText('ステータス') as HTMLSelectElement;
     const optionValues = Array.from(status.options).map(o => o.value);
@@ -156,7 +156,7 @@ describe('ProjectModal', () => {
     render(
       <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
     );
-    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'career' } });
+    fireEvent.change(screen.getByLabelText('種別（転職・副業）'), { target: { value: 'career' } });
 
     expect(screen.getByLabelText('職種')).toBeInTheDocument();
     expect(screen.queryByLabelText('契約形態')).not.toBeInTheDocument();

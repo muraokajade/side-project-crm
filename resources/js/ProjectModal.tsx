@@ -139,8 +139,13 @@ export default function ProjectModal({
               {fieldError('name') && <p className="text-red-600 text-xs mt-1">{fieldError('name')}</p>}
             </div>
             <div>
-              <label htmlFor="type" className="block text-sm font-medium text-slate-700 mb-1">種別</label>
-              <select id="type" name="type" value={form.type} onChange={handleTypeChange}
+              <label htmlFor="type" className="block text-sm font-medium text-slate-700 mb-1">種別（転職・副業）</label>
+              {/*
+                autoComplete="off": Chromeが住所系ドロップダウンと誤判定し、
+                選択済みの値の上に「選択肢を選ぶ」という自動入力の案内を重ねて表示するため、
+                保存値(career/side_job)はそのままに、その案内だけを抑止する。
+              */}
+              <select id="type" name="type" value={form.type} onChange={handleTypeChange} autoComplete="off"
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
                 <option value="career">転職</option>
                 <option value="side_job">副業</option>
