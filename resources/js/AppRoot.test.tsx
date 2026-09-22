@@ -282,6 +282,6 @@ describe('AppRoot', () => {
     await waitFor(() => expect(screen.getByText('案件を登録')).toBeInTheDocument());
     expect((screen.getByLabelText('案件URL') as HTMLInputElement).value)
       .toBe('https://type.jp/entry_history/entry_message_list/12345/');
-    expect((screen.getByLabelText('種別（転職・副業）') as HTMLSelectElement).value).toBe('career');
+    expect((screen.getByLabelText('種別') as HTMLSelectElement).value).toBe('career');
   });
 });

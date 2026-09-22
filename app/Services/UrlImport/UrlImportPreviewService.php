@@ -2,6 +2,7 @@
 
 namespace App\Services\UrlImport;
 
+use App\Support\SideJobAllowed;
 use DOMXPath;
 use Throwable;
 
@@ -23,6 +24,7 @@ class UrlImportPreviewService
         private readonly CrowdWorksExtractor $crowdWorksExtractor,
         private readonly MediaResolver $mediaResolver,
         private readonly RewardTextExtractor $rewardExtractor,
+        private readonly SideJobAllowedExtractor $sideJobAllowedExtractor,
     ) {
     }
 
@@ -76,6 +78,8 @@ class UrlImportPreviewService
             'employment_type' => $merged['employment_type'] ?? null,
             'contract_type' => $merged['contract_type'] ?? null,
             'delivery_date' => $merged['delivery_date'] ?? null,
+            // ページに明示が無い・曖昧・解析に失敗した場合はすべてunknown。推測はしない。
+            'side_job_allowed' => $merged['side_job_allowed'] ?? SideJobAllowed::UNKNOWN,
             'fetched_at' => now()->toIso8601String(),
             'fetch_status' => $name !== null ? 'success' : 'partial',
             'warnings' => $warnings,
@@ -130,6 +134,9 @@ class UrlImportPreviewService
             if (($merged['reward_text'] ?? null) === null) {
                 $merged['reward_text'] = $this->rewardExtractor->extract($xpath, $merged['name'] ?? null);
             }
+
+            // 副業可否はページの明示記載だけを根拠にする(案件の種別は参照しない)。
+            $merged['side_job_allowed'] = $this->sideJobAllowedExtractor->extract($xpath);
         } catch (Throwable) {
             // 解析中に想定外の例外が起きても、取得自体は成功しているためpartialとして返す(500にしない)。
             $merged = [];

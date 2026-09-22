@@ -43,6 +43,7 @@ class ProjectResource extends JsonResource
             'employment_type' => $this->employment_type,
             'contract_type' => $this->contract_type,
             'delivery_date' => $this->delivery_date,
+            'side_job_allowed' => $this->side_job_allowed,
             'fetched_at' => $this->fetched_at,
             'deleted_at' => $this->deleted_at,
             'created_at' => $this->created_at,

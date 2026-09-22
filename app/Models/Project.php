@@ -49,6 +49,7 @@ class Project extends Model
         'employment_type',
         'contract_type',
         'delivery_date',
+        'side_job_allowed',
     ];
 
     protected $casts = [

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { DuplicateProjectCandidate, Project, ProjectFormData, ProjectType } from './types/project';
+import { DuplicateProjectCandidate, Project, ProjectFormData, ProjectType, SIDE_JOB_ALLOWED_LABELS, SideJobAllowed } from './types/project';
 import { MEDIA_OPTIONS, CATEGORY_OPTIONS, statusOptionsForType } from './constants/projectOptions';
 import { emptyFormData, projectToFormData } from './utils/toFormData';
 import { formatRewardText } from './utils/rewardDisplay';
@@ -78,11 +78,15 @@ export default function ProjectModal({
       setError('案件名は必須です');
       return;
     }
+    if (!form.type) {
+      setError('種別を選んでください');
+      return;
+    }
     setError('');
     onSubmit(form);
   };
 
-  const statusOptions = statusOptionsForType(form.type);
+  const statusOptions = statusOptionsForType(form.type || 'side_job');
 
   // 「5000000〜15000000 JPY (YEAR)」のような機械的表記のときだけ、整形後の見え方を添える。
   const formattedReward =
@@ -139,14 +143,16 @@ export default function ProjectModal({
               {fieldError('name') && <p className="text-red-600 text-xs mt-1">{fieldError('name')}</p>}
             </div>
             <div>
-              <label htmlFor="type" className="block text-sm font-medium text-slate-700 mb-1">種別（転職・副業）</label>
+              <label htmlFor="type" className="block text-sm font-medium text-slate-700 mb-1">種別</label>
               {/*
+                新規登録では未選択から始め、転職/副業を明示的に選ばせる(既定値で登録させない)。
+                「選ぶ」は案内であって保存値ではないため、選び直せないようdisabledにする。
                 autoComplete="off": Chromeが住所系ドロップダウンと誤判定し、
-                選択済みの値の上に「選択肢を選ぶ」という自動入力の案内を重ねて表示するため、
-                保存値(career/side_job)はそのままに、その案内だけを抑止する。
+                自動入力の案内を値の上に重ねて表示するのを抑止する。
               */}
               <select id="type" name="type" value={form.type} onChange={handleTypeChange} autoComplete="off"
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                <option value="" disabled>選ぶ</option>
                 <option value="career">転職</option>
                 <option value="side_job">副業</option>
               </select>
@@ -289,6 +295,20 @@ export default function ProjectModal({
                   <input type="text" name="employment_type" value={form.employment_type} onChange={handleChange} placeholder="例: 正社員"
                     className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
                   {fieldError('employment_type') && <p className="text-red-600 text-xs mt-1">{fieldError('employment_type')}</p>}
+                </div>
+                <div>
+                  {/*
+                    URL取込では求人ページの明示記載だけを取り込む(記載が無ければ「不明」)。
+                    読み取れなかった場合や記載と異なる場合に、ここで手で直せるようにする。
+                  */}
+                  <label htmlFor="side_job_allowed" className="block text-sm font-medium text-slate-700 mb-1">副業可否</label>
+                  <select id="side_job_allowed" name="side_job_allowed" value={form.side_job_allowed} onChange={handleChange} autoComplete="off"
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                    {(Object.keys(SIDE_JOB_ALLOWED_LABELS) as SideJobAllowed[]).map(value => (
+                      <option key={value} value={value}>{SIDE_JOB_ALLOWED_LABELS[value]}</option>
+                    ))}
+                  </select>
+                  {fieldError('side_job_allowed') && <p className="text-red-600 text-xs mt-1">{fieldError('side_job_allowed')}</p>}
                 </div>
               </div>
             )}

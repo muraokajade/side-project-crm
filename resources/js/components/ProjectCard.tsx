@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Project } from '../types/project';
+import { Project, SIDE_JOB_ALLOWED_LABELS } from '../types/project';
 import { STATUS_COLORS } from '../constants/projectOptions';
 import { rewardDisplay } from '../utils/rewardDisplay';
 import { resolveMediaForDisplay } from '../utils/mediaFromUrl';
@@ -217,7 +217,7 @@ export default function ProjectCard({
             <Field label="メモ" value={p.memo} />
           </dl>
 
-          {p.type === 'career' && (p.job_type || p.location || p.remote_type || p.employment_type) && (
+          {p.type === 'career' && (
             <div>
               <p className="text-xs font-medium text-slate-500 mb-2">転職専用項目</p>
               <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
@@ -225,6 +225,8 @@ export default function ProjectCard({
                 <Field label="勤務地" value={p.location} />
                 <Field label="リモート区分" value={p.remote_type} />
                 <Field label="雇用形態" value={employmentTypeDisplay(p.employment_type)} />
+                {/* 明示が無ければ「不明」。値が確定していないことも情報なので常に出す。 */}
+                <Field label="副業可否" value={SIDE_JOB_ALLOWED_LABELS[p.side_job_allowed ?? 'unknown']} />
               </dl>
             </div>
           )}

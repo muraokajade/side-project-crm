@@ -1,5 +1,15 @@
 export type ProjectType = 'career' | 'side_job';
 
+/** 求人ページに明示されていた副業可否。推測はせず、明示が無ければunknown。 */
+export type SideJobAllowed = 'ok' | 'ng' | 'unknown';
+
+/** 副業可否の画面表示。 */
+export const SIDE_JOB_ALLOWED_LABELS: Record<SideJobAllowed, string> = {
+  ok: '副業OK',
+  ng: '副業NG',
+  unknown: '不明',
+};
+
 export interface Project {
   id: number;
   type: ProjectType;
@@ -31,6 +41,8 @@ export interface Project {
   // side_job専用項目
   contract_type: string | null;
   delivery_date: string | null;
+  /** 古いレスポンスにも耐えられるよう任意。未指定はunknownとして扱う。 */
+  side_job_allowed?: SideJobAllowed;
   fetched_at: string | null;
   deleted_at: string | null;
   created_at: string;
@@ -52,7 +64,8 @@ export interface ApiErrorCodeResponse {
 }
 
 export interface ProjectFormData {
-  type: ProjectType;
+  /** 新規登録時は未選択('')から始まる。保存前に転職/副業を明示的に選ばせる。 */
+  type: ProjectType | '';
   name: string;
   project_url: string;
   client_name: string;
@@ -80,6 +93,7 @@ export interface ProjectFormData {
   employment_type: string;
   contract_type: string;
   delivery_date: string;
+  side_job_allowed: SideJobAllowed;
 }
 
 /** 取込先URLと同一URLで既に登録済みの案件(重複警告用。同一ユーザー・論理削除済みを除く)。 */
@@ -112,6 +126,7 @@ export interface ProjectPreviewData {
   employment_type: string | null;
   contract_type: string | null;
   delivery_date: string | null;
+  side_job_allowed?: SideJobAllowed;
   fetched_at: string;
   fetch_status: 'success' | 'partial';
   warnings: string[];

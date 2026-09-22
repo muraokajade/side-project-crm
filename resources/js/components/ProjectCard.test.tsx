@@ -446,6 +446,25 @@ describe('ProjectCard 一覧の読みやすさ', () => {
     expect(screen.queryByText('応募締切')).not.toBeInTheDocument();
   });
 
+  it('副業可否は一覧に出さず、転職案件の詳細でだけ出す', () => {
+    render(<ProjectCard project={makeProject({ type: 'career', side_job_allowed: 'ok' })} variant="active" />);
+
+    expect(screen.queryByText('副業OK')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    expect(screen.getByText('副業可否')).toBeInTheDocument();
+    expect(screen.getByText('副業OK')).toBeInTheDocument();
+  });
+
+  it('副業可否が未設定の転職案件は詳細で「不明」と出す', () => {
+    render(<ProjectCard project={makeProject({ type: 'career' })} variant="active" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    expect(screen.getByText('不明')).toBeInTheDocument();
+  });
+
   it('一覧にはURL全文や職種・勤務地・雇用形態を常時出さない', () => {
     render(<ProjectCard project={makeProject({
       type: 'career',

@@ -120,7 +120,69 @@ describe('ProjectModal', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('種別=側業(既定)ではside_job用のステータス選択肢を表示する', () => {
+  it('新規登録では種別が未選択で、「選ぶ」を案内として出す', () => {
+    render(
+      <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
+    );
+
+    const type = screen.getByLabelText('種別') as HTMLSelectElement;
+
+    expect(type.value).toBe('');
+    expect(Array.from(type.options).map(o => o.textContent)).toEqual(['選ぶ', '転職', '副業']);
+    // 「選ぶ」は保存値ではないため選び直せないこと。
+    expect((type.options[0] as HTMLOptionElement).disabled).toBe(true);
+  });
+
+  it('編集では保存済みの種別を選択状態で表示する', () => {
+    const project = {
+      id: 1, type: 'career' as const, name: '案件', project_url: null, client_name: null,
+      media: null, category: null, description: null, applied_date: null, deadline: null,
+      status: '気になる', reward: null, reward_text: null,
+      working_hours: null, applicant_count: null, recruitment_count: null, application_text: null,
+      next_action: null, next_action_date: null, memo: null, priority: null, is_favorite: false,
+      job_type: null, location: null, remote_type: null, employment_type: null,
+      contract_type: null, delivery_date: null, fetched_at: null, deleted_at: null,
+      created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+    };
+
+    render(
+      <ProjectModal open mode="edit" project={project} onClose={() => {}} onSubmit={() => {}} />
+    );
+
+    expect((screen.getByLabelText('種別') as HTMLSelectElement).value).toBe('career');
+  });
+
+  it('種別が未選択のまま登録しようとすると選択を促し、送信しない', () => {
+    const onSubmit = vi.fn();
+
+    // 案件名のlabelはhtmlForを持たないため、name属性で入力欄を取得する。
+    const { container } = render(
+      <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={onSubmit} />
+    );
+
+    fireEvent.change(container.querySelector('input[name="name"]')!, { target: { value: '種別未選択の案件' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録' }));
+
+    expect(screen.getByText('種別を選んでください')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('種別を選べば登録できる', () => {
+    const onSubmit = vi.fn();
+
+    const { container } = render(
+      <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={onSubmit} />
+    );
+
+    fireEvent.change(container.querySelector('input[name="name"]')!, { target: { value: '種別を選んだ案件' } });
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'career' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録' }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0].type).toBe('career');
+  });
+
+  it('種別が未選択の間もステータス選択肢を表示する', () => {
     render(
       <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
     );
@@ -135,7 +197,7 @@ describe('ProjectModal', () => {
     render(
       <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
     );
-    fireEvent.change(screen.getByLabelText('種別（転職・副業）'), { target: { value: 'career' } });
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'career' } });
 
     const status = screen.getByLabelText('ステータス') as HTMLSelectElement;
     const optionValues = Array.from(status.options).map(o => o.value);
@@ -148,6 +210,9 @@ describe('ProjectModal', () => {
     render(
       <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
     );
+    // 新規登録の種別は未選択から始まるため、副業を明示的に選んでから確認する。
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'side_job' } });
+
     expect(screen.getByLabelText('契約形態')).toBeInTheDocument();
     expect(screen.queryByLabelText('職種')).not.toBeInTheDocument();
   });
@@ -156,7 +221,7 @@ describe('ProjectModal', () => {
     render(
       <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
     );
-    fireEvent.change(screen.getByLabelText('種別（転職・副業）'), { target: { value: 'career' } });
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'career' } });
 
     expect(screen.getByLabelText('職種')).toBeInTheDocument();
     expect(screen.queryByLabelText('契約形態')).not.toBeInTheDocument();
@@ -305,6 +370,8 @@ describe('ProjectModal', () => {
     render(<ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={onSubmit} />);
 
     fireEvent.change(document.querySelector('[name="name"]')!, { target: { value: '案件' } });
+    // 種別が未選択だと送信前の確認で止まるため、媒体の検証前に有効な種別を選ぶ。
+    fireEvent.change(screen.getByLabelText('種別'), { target: { value: 'side_job' } });
     fireEvent.change(screen.getByLabelText('媒体'), { target: { value: 'その他' } });
     fireEvent.change(screen.getByLabelText('媒体名'), { target: { value: 'Green' } });
     fireEvent.click(screen.getByRole('button', { name: '登録' }));

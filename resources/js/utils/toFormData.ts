@@ -11,8 +11,13 @@ function formatRewardText(reward: number | null): string {
   return `${Number(reward).toLocaleString('ja-JP')}円`;
 }
 
-export const emptyFormData = (type: ProjectType = 'side_job'): ProjectFormData => ({
+/**
+ * 空の登録フォーム。種別は既定で未選択にし、利用者に転職/副業を選ばせる。
+ * URL取込のように種別が既に決まっている場合は、引数で渡して選択済みにする。
+ */
+export const emptyFormData = (type: ProjectType | '' = ''): ProjectFormData => ({
   type,
+  side_job_allowed: 'unknown',
   name: '',
   project_url: '',
   client_name: '',
@@ -79,6 +84,7 @@ export function projectToFormData(project: Project): ProjectFormData {
     employment_type: employmentTypeDisplay(project.employment_type) || '',
     contract_type: project.contract_type || '',
     delivery_date: project.delivery_date ? project.delivery_date.slice(0, 10) : '',
+    side_job_allowed: project.side_job_allowed ?? 'unknown',
   };
 }
 
@@ -110,5 +116,6 @@ export function previewToFormData(preview: ProjectPreviewData): ProjectFormData 
     employment_type: employmentTypeDisplay(preview.employment_type) || '',
     contract_type: preview.contract_type || '',
     delivery_date: preview.delivery_date ? preview.delivery_date.slice(0, 10) : '',
+    side_job_allowed: preview.side_job_allowed ?? 'unknown',
   };
 }

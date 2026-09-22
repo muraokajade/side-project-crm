@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Support\ProjectStatus;
+use App\Support\SideJobAllowed;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -75,6 +76,7 @@ class StoreProjectRequest extends FormRequest
             'employment_type' => ['nullable', 'string', 'max:255'],
             'contract_type' => ['nullable', 'string', 'max:255'],
             'delivery_date' => ['nullable', 'date'],
+            'side_job_allowed' => ['sometimes', 'string', Rule::in(SideJobAllowed::values())],
         ];
     }
 }
