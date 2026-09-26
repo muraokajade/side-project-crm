@@ -1,6 +1,6 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Project, SIDE_JOB_ALLOWED_LABELS } from '../types/project';
-import { STATUS_COLORS } from '../constants/projectOptions';
+import { STATUS_COLORS, statusOptionsForType } from '../constants/projectOptions';
 import { rewardDisplay } from '../utils/rewardDisplay';
 import { resolveMediaForDisplay } from '../utils/mediaFromUrl';
 import { employmentTypeDisplay } from '../utils/employmentType';
@@ -30,6 +30,12 @@ interface ProjectDetailPanelProps {
   variant: 'active' | 'trash' | 'demo';
   onClose: () => void;
   onEdit?: (project: Project) => void;
+  /**
+   * ステータスだけを保存する(variant="active"のときだけ使う)。
+   * 保存が終わる(成功・失敗どちらでも)までPromiseを解決しないこと。
+   * 画面の表示値は、その後に渡ってくる project.status に従う。
+   */
+  onStatusChange?: (project: Project, status: string) => Promise<void>;
   onDelete?: (id: number) => void;
   deleting?: boolean;
   onRestore?: (id: number) => void;
@@ -72,6 +78,7 @@ export default function ProjectDetailPanel({
   variant,
   onClose,
   onEdit,
+  onStatusChange,
   onDelete,
   deleting,
   onRestore,
@@ -79,6 +86,14 @@ export default function ProjectDetailPanel({
   restoring,
   forceDeleting,
 }: ProjectDetailPanelProps) {
+  /**
+   * 保存中のステータス。保存が終わるまでは選んだ値を見せ、終わったら捨てる。
+   * 失敗時はそのまま元の project.status の表示へ戻る(成功したように見せない)。
+   * 別の案件へ切り替えても持ち越さないよう、案件idと組で持つ。
+   */
+  const [pendingStatus, setPendingStatus] = useState<{ id: number; status: string } | null>(null);
+
+
   // Escapeで閉じる。スマホのシートでも、PCのパネルでも同じ挙動にする。
   useEffect(() => {
     if (p === null) return;
@@ -94,6 +109,24 @@ export default function ProjectDetailPanel({
   // DBの媒体が古い値でも、案件URLから判定できる場合はそちらで表示する(DBは書き換えない)。
   const media = resolveMediaForDisplay(p);
   const deadline = p.deadline?.slice(0, 10) ?? null;
+
+  const canChangeStatus = variant === 'active' && onStatusChange !== undefined;
+  const savingStatus = pendingStatus?.id === p.id ? pendingStatus.status : null;
+  const statusSaving = savingStatus !== null;
+  const shownStatus = savingStatus ?? p.status;
+  // 定義外の値(旧データ等)が保存されていても、先頭の選択肢に化けて見えないよう選択肢に残す。
+  const typeStatuses = statusOptionsForType(p.type);
+  const statusOptions = typeStatuses.includes(p.status) ? typeStatuses : [p.status, ...typeStatuses];
+
+  const changeStatus = async (status: string) => {
+    if (statusSaving || status === p.status || !onStatusChange) return;
+    setPendingStatus({ id: p.id, status });
+    try {
+      await onStatusChange(p, status);
+    } finally {
+      setPendingStatus(null);
+    }
+  };
 
   return (
     <>
@@ -124,9 +157,32 @@ export default function ProjectDetailPanel({
         <header className="flex shrink-0 items-start gap-3 px-4 py-3 md:px-5 md:py-4">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded px-2 py-0.5 text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
-                {p.status}
-              </span>
+              {/*
+                通常一覧では、ステータスをここで直接変える(選んだ時点で保存する)。
+                編集フォームを開かずに段階を進められるようにするため。
+                ゴミ箱・デモはDBを変えられないので、従来どおり表示だけにする。
+              */}
+              {canChangeStatus ? (
+                <select
+                  aria-label="ステータス"
+                  value={shownStatus}
+                  onChange={e => changeStatus(e.target.value)}
+                  disabled={statusSaving}
+                  aria-busy={statusSaving}
+                  className={`min-h-11 cursor-pointer rounded border-0 px-2 text-base disabled:cursor-wait disabled:opacity-60 md:min-h-8 md:text-xs ${
+                    STATUS_COLORS[shownStatus] || 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {statusOptions.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className={`rounded px-2 py-0.5 text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
+                  {p.status}
+                </span>
+              )}
+              {statusSaving && <span className="text-xs text-slate-400">保存中...</span>}
               <span className="text-xs text-slate-400">{TYPE_LABELS[p.type]}</span>
               {p.is_favorite && (
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 text-amber-400" role="img" aria-label="お気に入り">

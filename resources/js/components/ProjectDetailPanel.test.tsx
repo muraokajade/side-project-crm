@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import ProjectDetailPanel from './ProjectDetailPanel';
 import { Project } from '../types/project';
+import { CAREER_STATUS_OPTIONS, SIDE_JOB_STATUS_OPTIONS } from '../constants/projectOptions';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -339,6 +340,17 @@ describe('ProjectDetailPanel variant別の操作', () => {
     }
   });
 
+  it('variant=trash・demoではステータスを変更できない(表示のみ)', () => {
+    for (const variant of ['trash', 'demo'] as const) {
+      const { unmount } = render(
+        <ProjectDetailPanel project={makeProject()} variant={variant} onClose={() => {}} onStatusChange={async () => {}} />
+      );
+      expect(screen.queryByRole('combobox', { name: 'ステータス' })).not.toBeInTheDocument();
+      expect(panel().getByText('気になる')).toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it('操作は狭幅で44pxのタップ領域を確保する', () => {
     render(
       <ProjectDetailPanel project={makeProject()} variant="active" onClose={() => {}} onEdit={() => {}} onDelete={() => {}} />
@@ -346,5 +358,84 @@ describe('ProjectDetailPanel variant別の操作', () => {
 
     expect(screen.getByRole('button', { name: '編集' }).className).toContain('min-h-11');
     expect(screen.getByRole('button', { name: '詳細を閉じる' }).className).toContain('h-11');
+  });
+});
+
+describe('ProjectDetailPanel ステータスの直接変更', () => {
+  const statusSelect = () => screen.getByRole('combobox', { name: 'ステータス' }) as HTMLSelectElement;
+  const optionValues = () => Array.from(statusSelect().options).map(o => o.value);
+
+  /** 保存の完了をテスト側から制御するためのPromise。 */
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>(r => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  it('転職案件はcareer用、副業案件はside_job用のステータスだけを選択肢に出す', () => {
+    const { unmount } = render(
+      <ProjectDetailPanel project={makeProject({ type: 'career' })} variant="active" onClose={() => {}} onStatusChange={async () => {}} />
+    );
+    expect(optionValues()).toEqual([...CAREER_STATUS_OPTIONS]);
+    unmount();
+
+    render(
+      <ProjectDetailPanel project={makeProject({ type: 'side_job' })} variant="active" onClose={() => {}} onStatusChange={async () => {}} />
+    );
+    expect(optionValues()).toEqual([...SIDE_JOB_STATUS_OPTIONS]);
+  });
+
+  it('現在のステータスが選択された状態で出る', () => {
+    render(
+      <ProjectDetailPanel project={makeProject({ status: '応募済み' })} variant="active" onClose={() => {}} onStatusChange={async () => {}} />
+    );
+    expect(statusSelect().value).toBe('応募済み');
+  });
+
+  it('選んだ時点で案件と新しいステータスを渡し、保存中は再変更できない', async () => {
+    const save = deferred();
+    const onStatusChange = vi.fn(() => save.promise);
+    const project = makeProject({ status: '気になる' });
+    render(<ProjectDetailPanel project={project} variant="active" onClose={() => {}} onStatusChange={onStatusChange} />);
+
+    fireEvent.change(statusSelect(), { target: { value: '応募準備' } });
+
+    expect(onStatusChange).toHaveBeenCalledWith(project, '応募準備');
+    expect(statusSelect()).toBeDisabled();
+    expect(statusSelect().value).toBe('応募準備');
+    expect(screen.getByText('保存中...')).toBeInTheDocument();
+
+    save.resolve();
+    await waitFor(() => expect(statusSelect()).not.toBeDisabled());
+  });
+
+  it('保存に失敗して案件が変わらなければ、元のステータス表示へ戻る', async () => {
+    const save = deferred();
+    render(
+      <ProjectDetailPanel
+        project={makeProject({ status: '気になる' })}
+        variant="active"
+        onClose={() => {}}
+        onStatusChange={() => save.promise}
+      />
+    );
+
+    fireEvent.change(statusSelect(), { target: { value: '応募済み' } });
+    save.resolve();
+
+    await waitFor(() => expect(statusSelect().value).toBe('気になる'));
+    expect(screen.queryByText('保存中...')).not.toBeInTheDocument();
+  });
+
+  it('定義外のステータスが保存されていても、別の値に化けずにそのまま出す', () => {
+    render(
+      <ProjectDetailPanel project={makeProject({ status: '旧ステータス' })} variant="active" onClose={() => {}} onStatusChange={async () => {}} />
+    );
+    expect(statusSelect().value).toBe('旧ステータス');
+  });
+
+  it('狭幅では44px・16px(iOSの自動拡大を防ぐ)を確保する', () => {
+    render(<ProjectDetailPanel project={makeProject()} variant="active" onClose={() => {}} onStatusChange={async () => {}} />);
+    expect(statusSelect()).toHaveClass('min-h-11', 'text-base', 'md:text-xs');
   });
 });

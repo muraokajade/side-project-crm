@@ -60,6 +60,7 @@ function AppRoot() {
   // 以下のrefは、Reactのstate反映(再レンダリング)を待たずに二重送信を同期的に拒否するためのガード。
   const isSubmittingRef = useRef(false);
   const deletingIdsRef = useRef<Set<number>>(new Set());
+  const statusUpdatingIdsRef = useRef<Set<number>>(new Set());
 
   // 初回マウント時にログイン状態を確認する。
   useEffect(() => {
@@ -266,6 +267,28 @@ function AppRoot() {
     } finally {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * 詳細パネルからステータスだけを変える。送るのはstatusのみ(部分更新)。
+   * 成功したら一覧を再取得し、一覧・詳細パネル・集計を同じデータへ揃える。
+   * 失敗したら何も書き換えない(パネルは元のステータス表示へ戻る)。
+   */
+  const handleStatusChange = async (project: Project, status: string) => {
+    if (statusUpdatingIdsRef.current.has(project.id)) return;
+    statusUpdatingIdsRef.current.add(project.id);
+    try {
+      const res = await updateProject(project.id, { status });
+      if (res.status === 200) {
+        await fetchProjects();
+      } else {
+        window.alert('ステータスの変更に失敗しました。もう一度お試しください。');
+      }
+    } catch {
+      window.alert('通信に失敗しました。ネットワーク状態を確認してください。');
+    } finally {
+      statusUpdatingIdsRef.current.delete(project.id);
     }
   };
 
@@ -595,6 +618,7 @@ function AppRoot() {
           setSelectedId(null);
           openEdit(project);
         }}
+        onStatusChange={handleStatusChange}
         onDelete={handleDelete}
         deleting={selectedProject !== null && deletingId === selectedProject.id}
       />

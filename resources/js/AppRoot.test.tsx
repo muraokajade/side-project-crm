@@ -190,6 +190,62 @@ describe('AppRoot', () => {
     await waitFor(() => expect(screen.getByText('副業案件')).toBeInTheDocument());
   });
 
+  it('詳細パネルでステータスを変えると、statusだけをPATCHし一覧・詳細・集計がそろって更新される', async () => {
+    let status = '気になる';
+    fetchMock.mockImplementation((url: string, options?: RequestInit) => {
+      if (url.includes('/api/auth/me')) return Promise.resolve(jsonResponse(200, { data: AUTH_USER }));
+      if (options?.method === 'PATCH') {
+        status = JSON.parse(String(options.body)).status;
+        return Promise.resolve(jsonResponse(200, { data: makeProject({ id: 5, name: '進める案件', status }) }));
+      }
+      return Promise.resolve(jsonResponse(200, { data: [makeProject({ id: 5, name: '進める案件', status })] }));
+    });
+
+    render(<AppRoot />);
+    await waitFor(() => expect(screen.getByText('進める案件')).toBeInTheDocument());
+    expect(screen.getByText(/対応中 1 ・ 終了 0/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '進める案件 の詳細を開く' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'ステータス' }), { target: { value: '見送り' } });
+
+    await waitFor(() => expect(screen.getByText(/対応中 0 ・ 終了 1/)).toBeInTheDocument());
+
+    const patchCalls = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+    expect(patchCalls).toHaveLength(1);
+    expect(String(patchCalls[0][0])).toContain('/api/projects/5');
+    expect(JSON.parse(String((patchCalls[0][1] as RequestInit).body))).toEqual({ status: '見送り' });
+
+    const row = screen.getByRole('button', { name: '進める案件 の詳細を開く' });
+    expect(within(row).getByText('見送り')).toBeInTheDocument();
+    expect((screen.getByRole('combobox', { name: 'ステータス' }) as HTMLSelectElement).value).toBe('見送り');
+    // 編集フォームは開かない。
+    expect(screen.queryByText('案件を編集')).not.toBeInTheDocument();
+  });
+
+  it('ステータスの保存に失敗したら通知し、一覧・詳細は元のステータスのまま', async () => {
+    fetchMock.mockImplementation((url: string, options?: RequestInit) => {
+      if (url.includes('/api/auth/me')) return Promise.resolve(jsonResponse(200, { data: AUTH_USER }));
+      if (options?.method === 'PATCH') return Promise.resolve(jsonResponse(500, {}));
+      return Promise.resolve(jsonResponse(200, { data: [makeProject({ id: 5, name: '進める案件' })] }));
+    });
+    const alertMock = vi.fn();
+    vi.stubGlobal('alert', alertMock);
+
+    render(<AppRoot />);
+    await waitFor(() => expect(screen.getByText('進める案件')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '進める案件 の詳細を開く' }));
+    const select = screen.getByRole('combobox', { name: 'ステータス' }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: '応募済み' } });
+
+    await waitFor(() => expect(alertMock).toHaveBeenCalled());
+    await waitFor(() => expect(select).not.toBeDisabled());
+    expect(select.value).toBe('気になる');
+    const row = screen.getByRole('button', { name: '進める案件 の詳細を開く' });
+    expect(within(row).getByText('気になる')).toBeInTheDocument();
+    expect(screen.getByText(/対応中 1 ・ 終了 0/)).toBeInTheDocument();
+  });
+
   it('削除確認後にDELETE /api/projects/{id}を呼び出し、一覧を再取得する', async () => {
     fetchMock.mockImplementation((url: string, options?: RequestInit) => {
       if (url.includes('/api/projects/1') && options?.method === 'DELETE') {
