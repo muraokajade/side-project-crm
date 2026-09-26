@@ -27,6 +27,9 @@ describe('AuthScreen', () => {
     render(<AuthScreen onAuthenticated={() => {}} />);
 
     expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
+    // 何のサービスかを名前の直下で伝える。
+    expect(screen.getByText('求人探しから応募管理まで、ひとつに。')).toBeInTheDocument();
+    expect(screen.queryByText('ログインしてください。')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('パスワード（確認）')).not.toBeInTheDocument();
   });
 
@@ -51,7 +54,7 @@ describe('AuthScreen', () => {
   it('新規登録へ切り替えると名前と確認用パスワードを入力できる', () => {
     render(<AuthScreen onAuthenticated={() => {}} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '無料で始める' }));
 
     expect(screen.getByLabelText('お名前')).toBeInTheDocument();
     expect(screen.getByLabelText('パスワード（確認）')).toBeInTheDocument();
@@ -65,7 +68,7 @@ describe('AuthScreen', () => {
     const onAuthenticated = vi.fn();
     render(<AuthScreen onAuthenticated={onAuthenticated} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '無料で始める' }));
     fireEvent.change(screen.getByLabelText('お名前'), { target: { value: 'B' } });
     fireEvent.change(screen.getByLabelText('メールアドレス'), { target: { value: 'b@example.com' } });
     fireEvent.change(screen.getByLabelText('パスワード'), { target: { value: 'password123' } });
@@ -115,5 +118,26 @@ describe('AuthScreen', () => {
     await waitFor(() =>
       expect(screen.getByText('試行回数が多すぎます。しばらく待ってからもう一度お試しください。')).toBeInTheDocument()
     );
+  });
+  it('パスワード再設定は未実装のため、リンクではなく連絡先を案内する', () => {
+    render(<AuthScreen onAuthenticated={() => {}} />);
+
+    expect(screen.getByText('パスワードを忘れた方は管理者へご連絡ください。')).toBeInTheDocument();
+    // 遷移先の無いリンクは置かない(押しても何も起きない導線を作らない)。
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /パスワード/ })).not.toBeInTheDocument();
+  });
+
+  it('新規登録への導線は「はじめての方」「無料で始める」で示す', () => {
+    render(<AuthScreen onAuthenticated={() => {}} />);
+
+    expect(screen.getByText('はじめての方')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '無料で始める' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '無料で始める' }));
+
+    // 登録モードでは逆向きの導線になり、パスワードの案内は出さない。
+    expect(screen.getByText('すでにアカウントをお持ちの方')).toBeInTheDocument();
+    expect(screen.queryByText('パスワードを忘れた方は管理者へご連絡ください。')).not.toBeInTheDocument();
   });
 });
