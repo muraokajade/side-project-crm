@@ -1,20 +1,27 @@
-import { useState } from 'react';
-import { Project, SIDE_JOB_ALLOWED_LABELS } from '../types/project';
-import { STATUS_COLORS } from '../constants/projectOptions';
+import { Project } from '../types/project';
+import { STATUS_DOT_COLORS, STATUS_DOT_FALLBACK } from '../constants/projectOptions';
 import { rewardDisplay } from '../utils/rewardDisplay';
 import { resolveMediaForDisplay } from '../utils/mediaFromUrl';
-import { employmentTypeDisplay } from '../utils/employmentType';
+
+/**
+ * 一覧の1行。
+ *
+ * この画面は20〜100件を上から下へ読み飛ばすためのものなので、
+ * 1件につき出すのは「比べるために要る値」だけにしてある。
+ * 募集内容の抜粋・URL・職種・メモなどは行に出さず、詳細パネルに任せる。
+ * (すべてを少しずつ見せると、行が増えたときに文字の壁になる)
+ *
+ * PCでは各値を固定幅の列に入れて、案件名の開始位置・会社・報酬・締切が
+ * 全行で縦に揃うようにしている。揃っていることが、そのまま比較しやすさになる。
+ * 狭幅では列をやめ、2段に折り返す。
+ */
 
 interface ProjectCardProps {
   project: Project;
-  variant: 'active' | 'trash';
-  onEdit?: (project: Project) => void;
-  onDelete?: (id: number) => void;
-  deleting?: boolean;
-  onRestore?: (id: number) => void;
-  onForceDelete?: (id: number) => void;
-  restoring?: boolean;
-  forceDeleting?: boolean;
+  /** 選択中の行は面を変えて、詳細パネルとの対応を示す。 */
+  selected?: boolean;
+  /** 押すと詳細パネルを開く。 */
+  onOpen: (project: Project) => void;
 }
 
 const TYPE_LABELS: Record<Project['type'], string> = {
@@ -22,39 +29,8 @@ const TYPE_LABELS: Record<Project['type'], string> = {
   side_job: '副業',
 };
 
-/**
- * 種別バッジ。ラベル文字(転職/副業)自体が種別を示すため、色は補助に留める。
- * 一覧で繰り返し並んでも視界を奪わないよう、既存の色相のまま最も淡い段階にする。
- */
-const TYPE_BADGE_CLASSES: Record<Project['type'], string> = {
-  career: 'bg-purple-50 text-purple-600',
-  side_job: 'bg-emerald-50 text-emerald-600',
-};
-
-/**
- * 一覧に出す募集内容の最大文字数。
- * 表示は line-clamp-2 で2行に抑えるが、DOMへ全文を載せないためにここでも切り詰める
- * (「求人概要の全文は一覧に出さない」を、見た目だけでなくDOM上でも満たす)。
- */
-const LIST_EXCERPT_LENGTH = 100;
-
 /** 応募締切が近いことを警告し始める日数。 */
 const DEADLINE_SOON_DAYS = 7;
-
-/** http/https以外のスキームは外部リンクとして開かない(安全な表示のための最小限のガード)。 */
-function isSafeExternalUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url);
-}
-
-/** 一覧用に、改行・連続空白をつぶして先頭だけを抜き出す。 */
-export function listExcerpt(text: string | null): string | null {
-  if (!text) return null;
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (normalized === '') return null;
-  return normalized.length <= LIST_EXCERPT_LENGTH
-    ? normalized
-    : `${normalized.slice(0, LIST_EXCERPT_LENGTH)}…`;
-}
 
 type DeadlineState = 'overdue' | 'soon' | 'normal';
 
@@ -79,215 +55,103 @@ export function deadlineState(deadline: string, today: Date = new Date()): Deadl
 const DEADLINE_CLASSES: Record<DeadlineState, string> = {
   overdue: 'text-red-600 font-medium',
   soon: 'text-amber-600 font-medium',
-  normal: 'text-slate-600',
+  normal: 'text-slate-500',
 };
 
 /**
- * 詳細の「項目名 + 値」。値が無い項目は出さない。
- * 募集内容の段落・改行は whitespace-pre-wrap で維持し、長い値は折り返す。
+ * PC(md以上)の列幅。一覧のヘッダー行(ProjectListHeader)と同じ値を使う。
+ * ここを直すときは必ず両方そろえる。
  */
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
-  if (!value) return null;
+export const LIST_GRID_CLASS =
+  'md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_7rem_5.5rem_6rem_2.5rem] md:items-center md:gap-x-4';
+
+/** 一覧の列見出し。PCでだけ出す(狭幅は列ではなく2段の折り返しになるため)。 */
+export function ProjectListHeader() {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs text-slate-400 mb-0.5">{label}</dt>
-      <dd className="text-sm text-slate-700 whitespace-pre-wrap break-words">{value}</dd>
+    <div
+      className={`hidden border-b border-slate-200 bg-slate-50/80 px-4 py-2 text-[11px] text-slate-400 ${LIST_GRID_CLASS}`}
+      aria-hidden="true"
+    >
+      <span>案件名</span>
+      <span>会社名</span>
+      <span className="text-right">報酬</span>
+      <span className="text-right">締切</span>
+      <span>ステータス</span>
+      <span />
     </div>
   );
 }
 
-export default function ProjectCard({
-  project: p,
-  variant,
-  onEdit,
-  onDelete,
-  deleting,
-  onRestore,
-  onForceDelete,
-  restoring,
-  forceDeleting,
-}: ProjectCardProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  const excerpt = listExcerpt(p.description);
+export default function ProjectCard({ project: p, selected, onOpen }: ProjectCardProps) {
   const deadline = p.deadline?.slice(0, 10) ?? null;
   // DBの媒体が古い値でも、案件URLから判定できる場合はそちらで表示する(DBは書き換えない)。
   const media = resolveMediaForDisplay(p);
   // 一覧の1スロットに収めるため、クライアント名が無い案件は媒体で代替する。
   const company = p.client_name || media;
   const reward = rewardDisplay(p);
-  const detailId = `project-detail-${p.id}`;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden transition-shadow hover:shadow-md hover:border-slate-300">
-      {/*
-        一覧は「読む」ではなく「探す」ための密度にする。
-        PCでは1案件=1行、スマホでは折り返して縦積みにする。
-        媒体・カテゴリ・URL全文・職種等は一覧に出さず、詳細を開いたときだけ出す。
-      */}
-      <div className="px-3 py-2">
-        {/*
-          PCでは1行に収め、スマホでは自然に縦へ折り返す。
-          並びは 案件名 → ステータス → 会社名 → 報酬 → 締切 → 詳細。
-          会社名は無ければ媒体で代替し、1スロットに収める(項目は増やさない)。
-        */}
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
-          <div className="flex items-center gap-1.5 min-w-0 md:flex-1">
-            {p.is_favorite && (
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-400 shrink-0" role="img" aria-label="お気に入り">
-                <path d="M10 1.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z" />
-              </svg>
-            )}
-            <h3 className="min-w-0 flex-1 text-sm font-medium text-slate-800 truncate">{p.name}</h3>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs md:shrink-0 md:flex-nowrap">
-            <span className={`shrink-0 px-2 py-0.5 rounded ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
-              {p.status}
-            </span>
-            <span className={`shrink-0 px-1.5 py-0.5 rounded ${TYPE_BADGE_CLASSES[p.type]}`}>
-              {TYPE_LABELS[p.type]}
-            </span>
-            {company && (
-              <span className="min-w-0 max-w-[10rem] truncate text-slate-600">{company}</span>
-            )}
-            {reward && <span className="shrink-0 text-slate-700 font-medium">{reward}</span>}
-            {deadline && (
-              <span className="shrink-0 whitespace-nowrap">
-                <span className="text-slate-400">締切 </span>
-                <span className={DEADLINE_CLASSES[deadlineState(deadline)]}>{deadline}</span>
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setExpanded(v => !v)}
-              aria-expanded={expanded}
-              aria-controls={detailId}
-              className="shrink-0 px-2 py-1 text-xs text-slate-600 border border-slate-300 rounded hover:bg-slate-50 whitespace-nowrap"
-            >
-              {expanded ? '詳細を閉じる' : '詳細を開く'}
-            </button>
-          </div>
-        </div>
-
-        {/* 概要は1行だけ。全文は詳細に任せる。 */}
-        {excerpt && (
-          <p className="mt-0.5 text-xs text-slate-500 truncate">{excerpt}</p>
+    /*
+      行ぜんぶを開く導線にする。行の中に別のボタンを置いていないので、
+      押し先が競合しない。読み上げには「詳細を開く」と案件名を渡す。
+    */
+    <button
+      type="button"
+      onClick={() => onOpen(p)}
+      aria-label={`${p.name} の詳細を開く`}
+      className={`block w-full border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-slate-50 ${LIST_GRID_CLASS} ${
+        selected ? 'bg-slate-100' : 'bg-white'
+      }`}
+    >
+      {/* 案件名。ステータスの点を頭に置き、名前は必ず1行で切る。 */}
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          aria-hidden="true"
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT_COLORS[p.status] ?? STATUS_DOT_FALLBACK}`}
+        />
+        {p.is_favorite && (
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0 text-amber-400" role="img" aria-label="お気に入り">
+            <path d="M10 1.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z" />
+          </svg>
         )}
-      </div>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{p.name}</span>
+      </span>
 
-      {expanded && (
-        <div id={detailId} className="px-4 py-4 border-t border-slate-100 space-y-4">
-          {/* 募集内容は全文。段落・改行はFieldのwhitespace-pre-wrapで維持する。 */}
-          <dl>
-            <Field label="募集内容" value={p.description} />
-          </dl>
+      {/*
+        会社名・報酬・締切・ステータスの4項目。
 
-          {p.project_url && (
-            <dl>
-              <dt className="text-xs text-slate-400 mb-0.5">案件URL</dt>
-              <dd className="min-w-0">
-                {isSafeExternalUrl(p.project_url) ? (
-                  <a
-                    href={p.project_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 underline break-all"
-                  >
-                    {p.project_url}
-                  </a>
-                ) : (
-                  <span className="text-sm text-slate-700 break-all">{p.project_url}</span>
-                )}
-              </dd>
-            </dl>
+        PC(md以上)では md:contents でこの入れ物自体を消し、
+        4つをそのまま一覧の列(col2〜col5)へ流し込む。
+        狭幅では入れ物がflexとして働き、案件名の下へ1段に折り返す。
+        こうすると値をDOMへ二重に置かずに、PCと狭幅で並べ方だけを変えられる。
+      */}
+      <span className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 pl-3.5 text-xs md:mt-0 md:contents">
+        <span className="min-w-0 truncate text-slate-500">{company}</span>
+
+        <span className="text-slate-600 tabular-nums md:truncate md:text-right">{reward}</span>
+
+        <span className="whitespace-nowrap tabular-nums md:text-right">
+          {deadline && (
+            <>
+              {/* PCは列見出しが「締切」を示すので、ラベルは狭幅だけに出す。 */}
+              <span className="text-slate-400 md:hidden">締切 </span>
+              <span className={DEADLINE_CLASSES[deadlineState(deadline)]}>{deadline}</span>
+            </>
           )}
+        </span>
 
-          <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3">
-            <Field label="報酬" value={rewardDisplay(p)} />
-            <Field label="媒体" value={media} />
-            <Field label="クライアント" value={p.client_name} />
-            <Field label="カテゴリ" value={p.category} />
-            <Field label="応募日" value={p.applied_date?.slice(0, 10)} />
-            <Field label="次アクション" value={p.next_action} />
-            <Field label="次アクション日" value={p.next_action_date?.slice(0, 10)} />
-          </dl>
+        <span className="md:truncate">
+          <span className="text-slate-500">{p.status}</span>
+          <span className="ml-1.5 text-slate-400">{TYPE_LABELS[p.type]}</span>
+        </span>
+      </span>
 
-          <dl>
-            <Field label="メモ" value={p.memo} />
-          </dl>
-
-          {p.type === 'career' && (
-            <div>
-              <p className="text-xs font-medium text-slate-500 mb-2">転職専用項目</p>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
-                <Field label="職種" value={p.job_type} />
-                <Field label="勤務地" value={p.location} />
-                <Field label="リモート区分" value={p.remote_type} />
-                <Field label="雇用形態" value={employmentTypeDisplay(p.employment_type)} />
-                {/* 明示が無ければ「不明」。値が確定していないことも情報なので常に出す。 */}
-                <Field label="副業可否" value={SIDE_JOB_ALLOWED_LABELS[p.side_job_allowed ?? 'unknown']} />
-              </dl>
-            </div>
-          )}
-
-          {p.type === 'side_job' && (p.contract_type || p.delivery_date) && (
-            <div>
-              <p className="text-xs font-medium text-slate-500 mb-2">副業専用項目</p>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
-                <Field label="契約形態" value={p.contract_type} />
-                <Field label="納品日" value={p.delivery_date?.slice(0, 10)} />
-              </dl>
-            </div>
-          )}
-
-          {/* 編集・削除は詳細を開いたときだけ、末尾にまとめて出す(一覧での誤操作を防ぐ)。 */}
-          <div className="pt-3 border-t border-slate-100">
-            <p className="text-xs text-slate-400 mb-2">操作</p>
-            <div className="flex flex-wrap gap-2">
-              {variant === 'active' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onEdit?.(p)}
-                    className="px-3 py-1.5 text-xs text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50"
-                  >
-                    編集
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete?.(p.id)}
-                    disabled={deleting}
-                    className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {deleting ? '削除中...' : 'ゴミ箱へ移動'}
-                  </button>
-                </>
-              )}
-              {variant === 'trash' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onRestore?.(p.id)}
-                    disabled={restoring}
-                    className="px-3 py-1.5 text-xs text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 disabled:opacity-50"
-                  >
-                    {restoring ? '復元中...' : '復元'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onForceDelete?.(p.id)}
-                    disabled={forceDeleting}
-                    className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {forceDeleting ? '完全削除中...' : '完全削除'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      {/* 開く方向の記号。行そのものが押せるので、これは印であって独立したボタンではない。 */}
+      <span aria-hidden="true" className="hidden justify-end text-slate-300 md:flex">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+          <path d="M7.5 5l5 5-5 5" />
+        </svg>
+      </span>
+    </button>
   );
 }

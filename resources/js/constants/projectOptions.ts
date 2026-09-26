@@ -26,6 +26,43 @@ export const CATEGORY_OPTIONS = ['Web開発', 'AI', 'DX・業務改善', 'シス
  * 色相は段階の識別を助ける補助であって、主張させるためのものではない。
  * 中立・終了(気になる・応募準備・見送り)はslateへ寄せ、色を使わない。
  */
+/**
+ * 一覧で使うステータスの色。
+ *
+ * 一覧には同じ状態表示が20〜100行ぶん並ぶ。背景付きのバッジを行ごとに置くと、
+ * 塗り面が縦に積み上がって「探す」ための視線誘導を奪う。
+ * そのため一覧では、色は1.5pxの点だけに持たせ、文字は他のメタ情報と同じ濃さに揃える。
+ * 色が持つ意味(どの段階か)は変えていない。下のSTATUS_COLORSと同じ色相を使う。
+ */
+export const STATUS_DOT_COLORS: Record<string, string> = {
+  // 中立(最頻出)。色を持たせず、点があること自体で「段階の前半」を示す。
+  '気になる': 'bg-slate-300',
+  '応募準備': 'bg-slate-300',
+  '見送り': 'bg-slate-200',
+  '応募済み': 'bg-blue-400',
+  // career専用
+  '書類選考': 'bg-indigo-400',
+  '面接': 'bg-cyan-400',
+  '最終面接': 'bg-teal-400',
+  '内定': 'bg-green-500',
+  // side_job専用
+  '返信待ち': 'bg-amber-400',
+  '面談': 'bg-blue-400',
+  '選考中': 'bg-indigo-400',
+  '契約': 'bg-violet-500',
+  '作業中': 'bg-cyan-400',
+  '納品': 'bg-sky-400',
+  '検収待ち': 'bg-orange-400',
+  '完了': 'bg-green-500',
+};
+
+/** 未知のステータス(将来ラベルが増えた場合)の点。色で意味を作らない。 */
+export const STATUS_DOT_FALLBACK = 'bg-slate-300';
+
+/**
+ * 背景付きのステータスバッジ。詳細パネルなど、1画面に1つだけ出る場所で使う。
+ * 一覧はSTATUS_DOT_COLORSを使う(上記の理由)。
+ */
 export const STATUS_COLORS: Record<string, string> = {
   // 中立(最頻出。ここが目立つと一覧全体が騒がしくなる)
   '気になる': 'bg-slate-100 text-slate-600',

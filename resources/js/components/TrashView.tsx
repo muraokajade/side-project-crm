@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Project } from '../types/project';
 import { listTrash, restoreProject, forceDeleteProject } from '../api/projects';
-import ProjectCard from './ProjectCard';
+import ProjectCard, { ProjectListHeader } from './ProjectCard';
+import ProjectDetailPanel from './ProjectDetailPanel';
 
 interface TrashViewProps {
   onClose: () => void;
@@ -12,6 +13,8 @@ export default function TrashView({ onClose }: TrashViewProps) {
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<number | null>(null);
   const [forceDeletingId, setForceDeletingId] = useState<number | null>(null);
+  /** 詳細パネルで開いている案件のid。一覧と同じく実体ではなくidで持つ。 */
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const restoringIdsRef = useRef<Set<number>>(new Set());
   const forceDeletingIdsRef = useRef<Set<number>>(new Set());
 
@@ -73,14 +76,26 @@ export default function TrashView({ onClose }: TrashViewProps) {
     }
   };
 
+  /** パネルに出す案件。毎回いまの一覧から引き直し、消えたら自動で閉じる。 */
+  const selectedProject = useMemo(
+    () => projects.find(p => p.id === selectedId) ?? null,
+    [projects, selectedId],
+  );
+
   return (
-    <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <main
+      className={`mx-auto max-w-6xl space-y-3 px-4 py-4 transition-[padding] md:px-6 ${
+        selectedProject !== null ? 'md:pr-[27rem] lg:pr-[31rem]' : ''
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-slate-700">
-          ゴミ箱 <span className="text-slate-400 font-normal">{projects.length}件</span>
+          ゴミ箱 <span className="font-normal text-slate-400">{projects.length}件</span>
         </h2>
-        <button onClick={onClose}
-          className="px-3 py-1.5 text-sm text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50">
+        <button
+          onClick={onClose}
+          className="flex min-h-11 shrink-0 items-center rounded-md border border-slate-300 bg-white px-3.5 text-sm text-slate-600 hover:bg-slate-50 md:min-h-9"
+        >
           一覧へ戻る
         </button>
       </div>
@@ -91,21 +106,31 @@ export default function TrashView({ onClose }: TrashViewProps) {
         <p className="text-sm text-slate-400 text-center py-8">ゴミ箱は空です</p>
       )}
 
+      {/* 一覧と同じく、1件ごとの箱をやめて境界線で区切った1つの面にする。 */}
       {!loading && projects.length > 0 && (
-        <div className="space-y-2">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <ProjectListHeader />
           {projects.map(p => (
             <ProjectCard
               key={p.id}
               project={p}
-              variant="trash"
-              onRestore={handleRestore}
-              onForceDelete={handleForceDelete}
-              restoring={restoringId === p.id}
-              forceDeleting={forceDeletingId === p.id}
+              selected={p.id === selectedId}
+              onOpen={project => setSelectedId(project.id)}
             />
           ))}
         </div>
       )}
+
+      {/* 復元・完全削除は一覧ではなく詳細パネルの中に置く(一覧での誤操作を防ぐ)。 */}
+      <ProjectDetailPanel
+        project={selectedProject}
+        variant="trash"
+        onClose={() => setSelectedId(null)}
+        onRestore={handleRestore}
+        onForceDelete={handleForceDelete}
+        restoring={selectedProject !== null && restoringId === selectedProject.id}
+        forceDeleting={selectedProject !== null && forceDeletingId === selectedProject.id}
+      />
     </main>
   );
 }
