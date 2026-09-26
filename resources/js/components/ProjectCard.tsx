@@ -99,12 +99,18 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
       type="button"
       onClick={() => onOpen(p)}
       aria-label={`${p.name} の詳細を開く`}
-      className={`block w-full border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-slate-50 ${LIST_GRID_CLASS} ${
+      /*
+        狭幅(md未満)は flex-wrap + order で段を組む。
+          1段目: 案件名 / ステータス
+          2段目: 会社名・報酬 / 締切・種別(右寄せ。入り切らなければ次の段へ右寄せで落ちる)
+        PCの列は子要素のDOM順で決まるため、DOM順は変えず max-md: の指定だけで並べ替える。
+      */
+      className={`block w-full border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-slate-50 max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-2 ${LIST_GRID_CLASS} ${
         selected ? 'bg-slate-100' : 'bg-white'
       }`}
     >
       {/* 案件名。ステータスの点を頭に置き、名前は必ず1行で切る。 */}
-      <span className="flex min-w-0 items-center gap-2">
+      <span className="flex min-w-0 items-center gap-2 max-md:order-1 max-md:basis-0 max-md:grow">
         <span
           aria-hidden="true"
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT_COLORS[p.status] ?? STATUS_DOT_FALLBACK}`}
@@ -120,17 +126,20 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
       {/*
         会社名・報酬・締切・ステータスの4項目。
 
-        PC(md以上)では md:contents でこの入れ物自体を消し、
-        4つをそのまま一覧の列(col2〜col5)へ流し込む。
-        狭幅では入れ物がflexとして働き、案件名の下へ1段に折り返す。
+        contents でこの入れ物自体を消し、4つを行の直接の子として扱う。
+        PC(md以上)ではそのまま一覧の列(col2〜col5)へ流れ込み、
+        狭幅では上の order で段へ振り分けられる。
         こうすると値をDOMへ二重に置かずに、PCと狭幅で並べ方だけを変えられる。
       */}
-      <span className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 pl-3.5 text-xs md:mt-0 md:contents">
-        <span className="min-w-0 truncate text-slate-500">{company}</span>
+      <span className="contents text-xs">
+        {/* 1段目と2段目の区切り。狭幅だけで使い、高さは段の間隔を兼ねる。 */}
+        <span className="max-md:order-3 max-md:h-1 max-md:basis-full md:hidden" />
 
-        <span className="text-slate-600 tabular-nums md:truncate md:text-right">{reward}</span>
+        <span className="min-w-0 truncate text-slate-500 max-md:order-4 max-md:max-w-[55%] max-md:pl-3.5">{company}</span>
 
-        <span className="whitespace-nowrap tabular-nums md:text-right">
+        <span className="text-slate-600 tabular-nums max-md:order-5 max-md:truncate md:truncate md:text-right">{reward}</span>
+
+        <span className="whitespace-nowrap tabular-nums max-md:order-6 max-md:ml-auto md:text-right">
           {deadline && (
             <>
               {/* PCは列見出しが「締切」を示すので、ラベルは狭幅だけに出す。 */}
@@ -140,9 +149,14 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
           )}
         </span>
 
-        <span className="md:truncate">
-          <span className="text-slate-500">{p.status}</span>
-          <span className="ml-1.5 text-slate-400">{TYPE_LABELS[p.type]}</span>
+        {/*
+          PCはステータスと種別を同じ列に並べる。
+          狭幅は入れ物を消し、ステータスは案件名の右、種別は締切の後ろへ離して置く
+          (隣り合うとステータスの一部に見えるため)。
+        */}
+        <span className="max-md:contents md:truncate">
+          <span className="text-slate-500 max-md:order-2 max-md:shrink-0 max-md:font-medium max-md:text-slate-600">{p.status}</span>
+          <span className="ml-1.5 text-slate-400 max-md:order-7 max-md:ml-0">{TYPE_LABELS[p.type]}</span>
         </span>
       </span>
 

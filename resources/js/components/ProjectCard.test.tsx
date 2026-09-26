@@ -211,6 +211,72 @@ describe('ProjectCard 一覧の読みやすさ', () => {
   });
 });
 
+// jsdomはCSSを適用しないため、狭幅の段組みは order の指定で確認する。
+describe('ProjectCard スマホの情報階層', () => {
+  const renderSample = () =>
+    render(
+      <ProjectCard
+        project={makeProject({
+          name: 'フロント改修',
+          type: 'side_job',
+          status: '応募済み',
+          reward_text: '80,000円',
+          deadline: '2099-12-31',
+          client_name: '株式会社サンプル',
+        })}
+        onOpen={() => {}}
+      />
+    );
+  /** order指定を持つ、行の中の要素(値の入れ物)。 */
+  const cell = (text: string) => screen.getByText(text).closest('[class*="max-md:order-"]')!;
+
+  it('1段目は案件名とステータス、2段目は会社名・報酬、その後ろに締切・種別の順で並ぶ', () => {
+    renderSample();
+
+    expect(cell('フロント改修')).toHaveClass('max-md:order-1');
+    expect(cell('応募済み')).toHaveClass('max-md:order-2');
+    expect(cell('株式会社サンプル')).toHaveClass('max-md:order-4');
+    expect(cell('80,000円')).toHaveClass('max-md:order-5');
+    expect(cell('2099-12-31')).toHaveClass('max-md:order-6');
+    expect(cell('副業')).toHaveClass('max-md:order-7');
+  });
+
+  it('1段目と2段目の間で必ず折り返し、区切りはPCでは出さない', () => {
+    const { container } = renderSample();
+
+    const breaker = container.querySelector('.max-md\\:order-3')!;
+    expect(breaker).toHaveClass('max-md:basis-full', 'md:hidden');
+    expect(breaker.textContent).toBe('');
+  });
+
+  it('案件名を最も強く、ステータスはそれより控えめに出す', () => {
+    renderSample();
+
+    expect(screen.getByText('フロント改修')).toHaveClass('text-sm', 'font-medium', 'text-slate-800');
+    // ステータスの文字は親の text-xs を受け継ぎ、案件名より小さい。
+    expect(screen.getByText('応募済み')).not.toHaveClass('text-sm');
+    expect(screen.getByText('応募済み')).toHaveClass('max-md:shrink-0');
+  });
+
+  it('締切・種別は右へ寄せ、種別はステータスの隣に置かない', () => {
+    renderSample();
+
+    expect(cell('2099-12-31')).toHaveClass('max-md:ml-auto');
+    expect(cell('副業')).toHaveClass('max-md:ml-0');
+  });
+
+  it('PCの列はDOM順で決まるため、案件名・会社・報酬・締切・ステータス・種別の順を保つ', () => {
+    renderSample();
+
+    const text = row('フロント改修').textContent!;
+    const order = ['フロント改修', '株式会社サンプル', '80,000円', '2099-12-31', '応募済み', '副業'].map(t =>
+      text.indexOf(t)
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order).not.toContain(-1);
+  });
+});
+
 describe('ProjectCard ステータス表示', () => {
   /** 一覧のステータスは「点 + 文字」。点は案件名の手前に置く。 */
   const statusDot = (container: HTMLElement) => container.querySelector('span[aria-hidden="true"]');
