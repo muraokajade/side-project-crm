@@ -511,4 +511,64 @@ describe('ProjectModal', () => {
     expect(duplicate.compareDocumentPosition(success) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container).toBeTruthy();
   });
+
+  // jsdomはCSSを適用しないため、レイアウトは付与しているクラスと構造で確認する。
+  describe('スマホ向けレイアウト', () => {
+    const renderCreate = () =>
+      render(
+        <ProjectModal open mode="create" project={null} onClose={() => {}} onSubmit={() => {}} />
+      );
+
+    it('狭幅は下寄せのシート型、sm以上は従来の中央モーダルになる', () => {
+      renderCreate();
+      const panel = screen.getByRole('heading', { name: '案件を登録' }).parentElement!;
+
+      expect(panel.parentElement).toHaveClass('items-end', 'sm:items-center');
+      expect(panel).toHaveClass('rounded-t-xl', 'sm:rounded-lg', 'sm:mx-4', 'max-w-2xl');
+    });
+
+    it('高さはdvhで制限し、vhをフォールバックに持つ', () => {
+      renderCreate();
+      const panel = screen.getByRole('heading', { name: '案件を登録' }).parentElement!;
+
+      expect(panel).toHaveClass('max-h-[90vh]');
+      expect(panel.style.maxHeight).toBe('90dvh');
+    });
+
+    it('見出しは固定し、本文だけをスクロールさせる', () => {
+      const { container } = renderCreate();
+      const heading = screen.getByRole('heading', { name: '案件を登録' });
+      const body = container.querySelector('form')!.parentElement!;
+
+      expect(heading).toHaveClass('shrink-0');
+      expect(heading.parentElement).toHaveClass('overflow-hidden', 'flex-col');
+      expect(body).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+    });
+
+    it('保存・キャンセルは本文末尾に埋もれず、スクロール領域の下端に固定される', () => {
+      renderCreate();
+      const footer = screen.getByRole('button', { name: '登録' }).parentElement!;
+
+      expect(footer).toBe(screen.getByRole('button', { name: 'キャンセル' }).parentElement);
+      expect(footer).toHaveClass('sticky', 'bottom-0', 'bg-white');
+    });
+
+    it('入力欄は狭幅で16px・高さ44px、sm以上で従来の14pxに戻る', () => {
+      const { container } = renderCreate();
+      const fields = container.querySelectorAll('input:not([type="checkbox"]), select, textarea');
+
+      expect(fields.length).toBeGreaterThan(0);
+      fields.forEach(field => {
+        expect(field).toHaveClass('text-base', 'min-h-11', 'sm:text-sm');
+      });
+    });
+
+    it('保存・キャンセルは狭幅で高さ44pxを確保する', () => {
+      renderCreate();
+
+      for (const name of ['登録', 'キャンセル']) {
+        expect(screen.getByRole('button', { name })).toHaveClass('min-h-11', 'sm:min-h-9');
+      }
+    });
+  });
 });

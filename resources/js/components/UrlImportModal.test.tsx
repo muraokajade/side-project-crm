@@ -286,6 +286,29 @@ describe('UrlImportModal', () => {
     expect(screen.queryByText(GUIDANCE)).not.toBeInTheDocument();
   });
 
+  // ---- スマホ向けレイアウト(jsdomはCSSを適用しないため、クラスで確認する) ----
+
+  it('狭幅は下寄せのシート型で、高さをdvhで制限して中身をスクロールさせる', () => {
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+    const panel = screen.getByRole('heading', { name: 'URLから登録' }).parentElement!;
+
+    expect(panel.parentElement).toHaveClass('items-end', 'sm:items-center');
+    expect(panel).toHaveClass('rounded-t-xl', 'sm:rounded-lg', 'sm:mx-4', 'max-w-lg');
+    expect(panel).toHaveClass('max-h-[90vh]', 'overflow-y-auto');
+    expect(panel.style.maxHeight).toBe('90dvh');
+  });
+
+  it('入力欄は狭幅で16px・高さ44px、主要ボタンも高さ44pxを確保する', () => {
+    render(<UrlImportModal open onClose={() => {}} onPreviewReady={() => {}} onManualEntry={() => {}} />);
+
+    for (const field of [screen.getByPlaceholderText('https://...'), screen.getByLabelText('種別')]) {
+      expect(field).toHaveClass('text-base', 'min-h-11', 'sm:text-sm');
+    }
+    for (const name of ['求人情報を読み込む', 'キャンセル']) {
+      expect(screen.getByRole('button', { name })).toHaveClass('min-h-11', 'sm:min-h-9');
+    }
+  });
+
   // ---- 「取得中…」が残らないこと ----------------------------------------
 
   it('タイムアウト(中断)時はローディングを解除し、案内と手入力導線を出す', async () => {

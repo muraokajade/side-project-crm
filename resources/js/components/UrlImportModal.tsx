@@ -143,16 +143,33 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
     }
   };
 
+  // 狭幅では44pxのタップ領域を確保し、PCでは従来の高さに戻す。
   const primaryClass =
-    'px-4 py-2 text-sm text-white bg-slate-800 rounded-md hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed';
+    'flex min-h-11 items-center justify-center rounded-md bg-slate-800 px-4 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9';
   const secondaryClass =
-    'px-4 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50';
+    'flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9';
+  /*
+    入力欄は狭幅だけ16px。iOS Safariは16px未満の入力欄でフォーカス時に画面を
+    自動拡大し、そのまま戻らないため(ProjectModalと同じ理由)。
+  */
+  const fieldClass =
+    'min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 text-base focus:ring-2 focus:ring-slate-400 focus:outline-none sm:min-h-9 sm:text-sm';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div className="fixed inset-0 bg-black/40" onClick={handleClose}></div>
-      <div className="relative bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6">
-        <h2 className="text-lg font-semibold text-slate-800 mb-4">URLから登録</h2>
+      {/*
+        高さの上限と縦スクロールを必ず持たせる。
+        親がfixedで中央寄せのため、これが無いと内容が可視領域より高くなったとき
+        上下が画面外へ出たまま到達できなくなる(キーボード表示時に起きやすい)。
+        vhはモバイルSafariでツールバー展開時の高さを指すので、dvhを併記する。
+      */}
+      <div
+        /* 非対応ブラウザ向けのフォールバック値。dvhは下のstyleで上書きする。 */
+        className="relative mx-0 flex max-h-[90vh] w-full max-w-lg flex-col overflow-y-auto rounded-t-xl bg-white p-5 shadow-xl sm:mx-4 sm:rounded-lg sm:p-6"
+        style={{ maxHeight: '90dvh' }}
+      >
+        <h2 className="mb-4 text-base font-semibold text-slate-800">URLから登録</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           {validationError && <p className="text-red-600 text-sm">{validationError}</p>}
 
@@ -176,7 +193,7 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
               value={url}
               onChange={e => handleUrlChange(e.target.value)}
               placeholder="https://..."
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className={fieldClass}
             />
           </div>
           <div>
@@ -189,7 +206,7 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
               value={type}
               onChange={e => setType(e.target.value as ProjectType)}
               autoComplete="off"
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className={fieldClass}
             >
               <option value="" disabled>選ぶ</option>
               <option value="career">転職</option>
@@ -201,7 +218,11 @@ export default function UrlImportModal({ open, onClose, onPreviewReady, onManual
           </p>
 
           <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-slate-200">
-            <button type="button" onClick={handleClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="flex min-h-11 items-center justify-center rounded-md px-4 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-800 sm:min-h-9"
+            >
               キャンセル
             </button>
 
