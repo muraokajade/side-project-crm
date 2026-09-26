@@ -1,6 +1,7 @@
 import { Project } from '../types/project';
 import { statusStyle } from '../constants/projectOptions';
 import { rewardDisplay } from '../utils/rewardDisplay';
+import StatusMeter from './StatusMeter';
 import { resolveMediaForDisplay } from '../utils/mediaFromUrl';
 
 /**
@@ -150,13 +151,15 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
           PCはステータスと種別を同じ列に並べる。
           狭幅は入れ物を消し、ステータスは案件名の右、種別は締切の後ろへ離して置く
           (隣り合うとステータスの一部に見えるため)。
-          ステータスは「点 + 色付き文字」で1つのまとまりにする。色は進捗の意味(4グループ)だけを表す。
+          ステータスは「段階メーター + 色付き文字」で1つのまとまりにする。
+          進み具合はメーターの塗られたマスの数で示し、色(4グループ)は補助にとどめる。
           背景付きの札にはしない(行ごとに塗り面が並ぶと、案件名より目立ってしまうため)。
+          PCの列幅は変えないので、入り切らないときはメーターを残してステータス名の方を省略する。
         */}
         <span className="max-md:contents md:truncate">
-          <span className={`inline-flex items-center gap-1.5 font-medium max-md:order-2 max-md:shrink-0 ${status.text}`}>
-            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} />
-            {p.status}
+          <span className={`inline-flex max-w-full items-center gap-1.5 font-medium max-md:order-2 max-md:shrink-0 ${status.text}`}>
+            <StatusMeter type={p.type} status={p.status} />
+            <span className="min-w-0 truncate">{p.status}</span>
           </span>
           <span className="ml-1.5 text-slate-400 max-md:order-7 max-md:ml-0">{TYPE_LABELS[p.type]}</span>
         </span>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import ProjectCard, { ProjectListHeader, deadlineState } from './ProjectCard';
 import { Project } from '../types/project';
 
@@ -188,6 +188,12 @@ describe('ProjectCard 一覧の読みやすさ', () => {
     expect(row().className).toContain('md:grid-cols-');
   });
 
+  it('PCの列幅(ステータス列6rem・案件名列の可変幅)は変えていない', () => {
+    render(<ProjectCard project={makeProject()} onOpen={() => {}} />);
+
+    expect(row()).toHaveClass('md:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_7rem_5.5rem_6rem_2.5rem]');
+  });
+
   it('列見出しは行と同じグリッド定義を使う', () => {
     const { container } = render(<ProjectListHeader />);
 
@@ -254,8 +260,8 @@ describe('ProjectCard スマホの情報階層', () => {
 
     expect(screen.getByText('フロント改修')).toHaveClass('text-sm', 'font-medium', 'text-slate-800');
     // ステータスの文字は親の text-xs を受け継ぎ、案件名より小さい。
-    expect(screen.getByText('応募済み')).not.toHaveClass('text-sm');
-    expect(screen.getByText('応募済み')).toHaveClass('max-md:shrink-0');
+    expect(cell('応募済み')).not.toHaveClass('text-sm');
+    expect(cell('応募済み')).toHaveClass('max-md:shrink-0');
   });
 
   it('締切・種別は右へ寄せ、種別はステータスの隣に置かない', () => {
@@ -278,47 +284,92 @@ describe('ProjectCard スマホの情報階層', () => {
 });
 
 describe('ProjectCard ステータス表示', () => {
-  /** 一覧のステータスは「点 + 色付き文字」で1つのまとまり。点はステータス名の直前に置く。 */
-  const statusDot = (container: HTMLElement) => container.querySelector('span[aria-hidden="true"]');
+  /** 一覧のステータスは「段階メーター + 色付き文字」で1つのまとまり。 */
+  const meter = () => screen.getByRole('img', { name: /^進み具合/ });
+  const segments = () => Array.from(meter().children);
+  const filledCount = () => meter().querySelectorAll('[data-filled="true"]').length;
+  const renderStatus = (status: string, type: Project['type'] = 'career') =>
+    render(<ProjectCard project={makeProject({ status, type })} onOpen={() => {}} />);
 
-  it('ステータスは点と色付き文字で示し、塗りバッジにしない', () => {
-    const { container } = render(<ProjectCard project={makeProject({ status: '内定' })} onOpen={() => {}} />);
+  it('ステータス名の直前に、常に6マスの段階メーターを置く', () => {
+    renderStatus('書類選考');
 
-    const status = screen.getByText('内定');
-    expect(statusDot(container)?.className).toContain('bg-green-500');
-    expect(status).toContainElement(statusDot(container) as HTMLElement);
-    expect(status).toHaveClass('text-green-700');
-    expect(status.className).not.toContain('bg-');
+    const status = screen.getByText('書類選考').parentElement!;
+    expect(status).toContainElement(meter());
+    expect(status.firstElementChild).toBe(meter());
+    expect(segments()).toHaveLength(6);
   });
 
-  it('進捗の意味ごとに色をまとめる(未着手・選考中/進行中・成功・見送り)', () => {
-    const cases: [string, string, string][] = [
-      ['気になる', 'bg-slate-400', 'text-slate-600'],
-      ['書類選考', 'bg-blue-500', 'text-blue-700'],
-      ['最終面接', 'bg-blue-500', 'text-blue-700'],
-      ['契約', 'bg-blue-500', 'text-blue-700'],
-      ['完了', 'bg-green-500', 'text-green-700'],
-      ['見送り', 'bg-slate-300', 'text-slate-400'],
+  it('到達した段階の数だけマスを塗り、aria-labelでも同じ数を読めるようにする', () => {
+    const cases: [string, Project['type'], number][] = [
+      ['気になる', 'career', 0],
+      ['書類選考', 'career', 3],
+      ['内定', 'career', 6],
+      ['契約', 'side_job', 4],
+      ['完了', 'side_job', 6],
     ];
-    for (const [status, dot, text] of cases) {
-      const { container, unmount } = render(<ProjectCard project={makeProject({ status })} onOpen={() => {}} />);
-      expect(statusDot(container)).toHaveClass(dot);
-      expect(screen.getByText(status)).toHaveClass(text);
+    for (const [status, type, step] of cases) {
+      const { unmount } = renderStatus(status, type);
+      expect(filledCount()).toBe(step);
+      expect(meter()).toHaveAccessibleName(`進み具合 ${step}/6`);
       unmount();
     }
   });
 
-  it('未知のステータスでも色で意味を作らず、未着手と同じ中立の見た目で出す', () => {
-    const { container } = render(<ProjectCard project={makeProject({ status: '未知の状態' })} onOpen={() => {}} />);
+  it('塗られたマスは進捗グループの色、未到達のマスは薄いslateにする', () => {
+    renderStatus('書類選考');
 
-    expect(statusDot(container)).toHaveClass('bg-slate-400');
-    expect(screen.getByText('未知の状態')).toHaveClass('text-slate-600');
+    const [filled, , , empty] = segments();
+    expect(filled).toHaveClass('bg-blue-500');
+    expect(empty).toHaveClass('bg-slate-200');
   });
 
-  it('案件名の手前には点を置かない(点はステータスの側にだけある)', () => {
+  it('見送りは段階として数えず、マスの代わりに終了を示す線を出す', () => {
+    renderStatus('見送り');
+
+    expect(meter()).toHaveAccessibleName('進み具合 終了');
+    expect(meter().querySelectorAll('[data-filled]')).toHaveLength(0);
+    expect(meter().querySelector('.border-dashed')).not.toBeNull();
+    expect(screen.getByText('見送り').parentElement).toHaveClass('text-slate-400');
+  });
+
+  it('ステータス名は進捗グループの色で出し、塗りバッジにしない', () => {
+    renderStatus('内定');
+
+    const status = screen.getByText('内定').parentElement!;
+    expect(status).toHaveClass('text-green-700');
+    expect(status.className).not.toContain('bg-');
+  });
+
+  it('未知のステータスでも色で意味を作らず、0段階・中立の見た目で出す', () => {
+    renderStatus('未知の状態');
+
+    expect(filledCount()).toBe(0);
+    expect(screen.getByText('未知の状態').parentElement).toHaveClass('text-slate-600');
+  });
+
+  it('列幅が足りないときは、メーターを残してステータス名の方を省略する', () => {
+    renderStatus('書類選考');
+
+    expect(meter()).toHaveClass('shrink-0');
+    expect(screen.getByText('書類選考')).toHaveClass('min-w-0', 'truncate');
+  });
+
+  it('案件名の手前には状態の印を置かない', () => {
     render(<ProjectCard project={makeProject({ name: 'フロント改修' })} onOpen={() => {}} />);
 
-    expect(screen.getByText('フロント改修').parentElement!.querySelector('span[aria-hidden="true"]')).toBeNull();
+    const nameCell = screen.getByText('フロント改修').parentElement!;
+    expect(within(nameCell).queryByRole('img', { name: /^進み具合/ })).toBeNull();
+  });
+
+  it('メーターの上を押しても、行と同じく詳細が開く', () => {
+    const onOpen = vi.fn();
+    const project = makeProject({ status: '面接', type: 'career' });
+    render(<ProjectCard project={project} onOpen={onOpen} />);
+
+    fireEvent.click(meter());
+
+    expect(onOpen).toHaveBeenCalledWith(project);
   });
 
   it('種別は背景バッジにせず、文字だけで出す', () => {
