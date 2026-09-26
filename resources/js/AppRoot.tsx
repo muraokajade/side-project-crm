@@ -3,13 +3,15 @@ import { Project, ProjectFormData, ApiValidationErrors, ProjectType } from './ty
 import { computeStatusSummary } from './utils/projectSummary';
 import { listProjects, createProject, updateProject, deleteProject } from './api/projects';
 import ProjectModal, { ProjectModalNotice } from './ProjectModal';
-import ProjectCard from './components/ProjectCard';
+import ProjectCard, { ProjectListHeader } from './components/ProjectCard';
+import ProjectDetailPanel from './components/ProjectDetailPanel';
 import UrlImportModal from './components/UrlImportModal';
 import TrashView from './components/TrashView';
 import AuthScreen from './components/AuthScreen';
 import { AuthUser, fetchMe, logout as logoutRequest } from './api/auth';
 import { emptyFormData } from './utils/toFormData';
 import { mergeMediaFromForm } from './utils/mediaFromUrl';
+import { buildDemoProjects } from './constants/demoProjects';
 
 type TypeFilter = 'all' | ProjectType;
 
@@ -40,6 +42,19 @@ function AppRoot() {
   const [modalErrors, setModalErrors] = useState<Record<string, string[]> | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+
+  /**
+   * デモ表示。初めて見る人にJobHuntの使い方を伝えるための、架空案件の表示モード。
+   * ここがtrueの間だけ一覧を架空案件に差し替える。保存も通信も一切行わない。
+   */
+  const [demoMode, setDemoMode] = useState(false);
+
+  /**
+   * 詳細パネルで開いている案件のid。
+   * Project本体ではなくidで持つ。一覧を再取得すると別オブジェクトになるので、
+   * 実体を握っていると更新・削除のあとに古い内容が残ってしまう。
+   */
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   // isSubmitting/deletingId (state) はボタンのdisabled表示用。
   // 以下のrefは、Reactのstate反映(再レンダリング)を待たずに二重送信を同期的に拒否するためのガード。
@@ -106,10 +121,60 @@ function AppRoot() {
     setAppliedSearch('');
   };
 
-  const summary = useMemo(() => computeStatusSummary(projects), [projects]);
+  /**
+   * デモ案件。デモを開始したときだけ作る。
+   * 締切は今日基準で作るので、開始のたびに作り直して「締切間近」の色分けを保つ。
+   */
+  const demoProjects = useMemo(() => (demoMode ? buildDemoProjects() : []), [demoMode]);
+
+  /**
+   * 一覧に出す案件。デモ中は架空案件だけを出し、APIから取得した実データ(projects)とは混ぜない。
+   * projects自体はデモ中も一切書き換えないので、デモを終了すれば元の状態へそのまま戻る。
+   */
+  const displayProjects = demoMode ? demoProjects : projects;
+
+  const summary = useMemo(() => computeStatusSummary(displayProjects), [displayProjects]);
+
+  /**
+   * パネルに出す案件。毎回いまの一覧から引き直す。
+   * 削除やフィルターで一覧から消えたら null になり、パネルは自動的に閉じる。
+   */
+  const selectedProject = useMemo(
+    () => displayProjects.find(p => p.id === selectedId) ?? null,
+    [displayProjects, selectedId],
+  );
 
   // 0件の理由が「まだ登録していない」のか「絞り込みの結果」なのかで空状態を出し分ける。
   const hasActiveFilter = typeFilter !== 'all' || appliedSearch !== '';
+
+  /**
+   * まだ1件も登録していない人に出す画面かどうか。
+   *
+   * 「0件」には2種類ある。まだ登録していない0件と、絞り込んだ結果の0件。
+   * 後者は条件を解除する必要があるので、集計・フィルタ・検索をそのまま残す。
+   * ここで切り替えるのは前者だけで、案件が1件でもあれば従来の一覧画面になる。
+   */
+  const isOnboarding = !demoMode && projects.length === 0 && !hasActiveFilter;
+
+  const startDemo = () => {
+    setSelectedId(null);
+    setDemoMode(true);
+  };
+
+  const endDemo = () => {
+    setSelectedId(null);
+    setDemoMode(false);
+  };
+
+  /**
+   * URL取込を開く。
+   * デモ中に本物の登録を始めると架空案件と実案件が同じ一覧に並ぶので、先にデモを終える。
+   */
+  const openImport = () => {
+    setDemoMode(false);
+    setSelectedId(null);
+    setImportOpen(true);
+  };
 
   const clearFilters = () => {
     setTypeFilter('all');
@@ -227,6 +292,9 @@ function AppRoot() {
   };
 
   const openCreate = () => {
+    // デモ中に実案件を作ると一覧で混ざるため、登録を始める時点でデモを終える。
+    setDemoMode(false);
+    setSelectedId(null);
     setEditingProject(null);
     setCreateInitialData(undefined);
     setCreateNotice(null);
@@ -281,27 +349,33 @@ function AppRoot() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h1 className="text-xl font-semibold text-slate-800">JobHunt</h1>
+      {/*
+        ヘッダーは「今どのアカウントか」と離脱系だけに絞る。
+        毎日20〜100件を上下にたどる画面なので、常時見える帯は薄くして
+        一覧の開始位置を上げる。スクロール中も現在地が残るようstickyにする。
+      */}
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 md:px-6">
+          <h1 className="text-sm font-semibold tracking-wide text-slate-800">JobHunt</h1>
 
-          <div className="flex flex-col items-stretch gap-2 md:items-end">
-          {/*
-            登録ボタンはヘッダーから一覧ツールバーへ移した。
-            ヘッダーは「今どのアカウントか」と離脱系の操作だけに絞る。
-          */}
-          <div className="flex items-center gap-3 text-xs text-slate-500 max-w-full">
-            <span className="truncate">{authUser.email}</span>
-            <span aria-hidden="true" className="text-slate-300">|</span>
-            <button onClick={() => setView('trash')} className="underline hover:text-slate-700 shrink-0">
+          <div className="ml-auto flex items-center gap-1 text-xs text-slate-500">
+            <span className="hidden max-w-[12rem] truncate sm:inline">{authUser.email}</span>
+            {/*
+              ゴミ箱とログアウトは隣り合うので、狭幅では44pxずつ離して
+              誤タップでログアウトしないようにする。
+            */}
+            <button
+              onClick={() => setView('trash')}
+              className="flex min-h-11 items-center rounded-md px-2.5 hover:bg-slate-100 hover:text-slate-700 md:min-h-8"
+            >
               ゴミ箱
             </button>
-            <span aria-hidden="true" className="text-slate-300">|</span>
-            <button onClick={handleLogout} className="underline hover:text-slate-700 shrink-0">
+            <button
+              onClick={handleLogout}
+              className="flex min-h-11 items-center rounded-md px-2.5 hover:bg-slate-100 hover:text-slate-700 md:min-h-8"
+            >
               ログアウト
             </button>
-          </div>
           </div>
         </div>
       </header>
@@ -309,138 +383,221 @@ function AppRoot() {
       {view === 'trash' ? (
         <TrashView onClose={() => setView('list')} />
       ) : (
-        <main className="max-w-7xl mx-auto px-4 md:px-6 py-4 space-y-3">
+        /*
+          PCで詳細パネルを開いている間は、本文の右側にパネルぶんの余白を作る。
+          一覧が隠れないので、詳細を読みながら次の案件へ乗り換えられる。
+        */
+        <main
+          className={`mx-auto max-w-6xl px-4 py-4 transition-[padding] md:px-6 ${
+            isOnboarding ? '' : 'space-y-3'
+          } ${selectedProject !== null ? 'md:pr-[27rem] lg:pr-[31rem]' : ''}`}
+        >
+          {isOnboarding ? (
+            /*
+              まだ1件も登録していない人の画面。
+              集計・フィルタ・検索・「案件一覧 0件」は、操作できる対象が無い状態では
+              空の管理画面を見せているだけなので出さない。
+              代わりに、何をする道具で、最初に何を押せばいいかだけを置く。
+            */
+            <div className="flex min-h-[60vh] items-center justify-center py-8">
+              <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white px-6 py-12 text-center sm:px-10 sm:py-14">
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+                  JobHuntへようこそ
+                </h2>
+
+                <p className="mt-4 text-sm leading-relaxed text-slate-600 sm:text-base">
+                  気になる求人を登録して、応募状況をまとめて管理しましょう。
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  求人ページのURLを貼り付けるだけで、案件名や報酬などを取り込んで登録できます。
+                </p>
+
+                {/* 登録処理はどちらも一覧画面と同じものを呼ぶ(新しい経路は作らない)。 */}
+                <div className="mt-8 flex flex-col items-stretch justify-center gap-2.5 sm:flex-row sm:items-center">
+                  <button
+                    type="button"
+                    onClick={openImport}
+                    className="min-h-11 rounded-lg bg-slate-800 px-6 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+                  >
+                    求人URLから登録
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openCreate}
+                    className="min-h-11 rounded-lg border border-slate-300 px-6 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    手入力で登録
+                  </button>
+                </div>
+
+                {/*
+                  デモはこの画面が唯一の入口なので残す。
+                  ただし登録より前に出す案内ではないので、主・副CTAより弱く置く。
+                */}
+                <button
+                  type="button"
+                  onClick={startDemo}
+                  className="mt-6 min-h-11 px-2 text-xs text-slate-500 underline underline-offset-4 hover:text-slate-700"
+                >
+                  先にデモを見る
+                </button>
+              </div>
+            </div>
+          ) : (
+          <>
           {/*
-            ツールバー: 主CTA(求人URLを登録) + 件数サマリー + 絞り込み。
-            一覧の直前にまとめることで、登録→絞り込み→一覧の視線が上から下へ一直線になる。
-            集計はカードをやめ1行の数値列にし、一覧の開始位置を大きく引き上げた。
+            ツールバー: 主CTA(求人URLを登録) + 絞り込み + 検索。
+            強い要素は主CTA1つだけにして、他は面も影も持たせない。
+            件数サマリーはここから外し、一覧見出しの脇へ小さく添えた
+            (毎回見る情報ではないのに、主CTAと同じ高さで存在感が並んでいたため)。
           */}
-          <div className="bg-white rounded-lg shadow-sm divide-y divide-slate-100">
-            <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <button onClick={() => setImportOpen(true)}
-                  className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-md shadow-sm hover:bg-slate-700 whitespace-nowrap">
-                  求人URLを登録
-                </button>
-                <button onClick={openCreate}
-                  className="px-3 py-2 text-sm text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50 whitespace-nowrap">
-                  手入力
-                </button>
-              </div>
-
-              <dl className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-slate-500">
-                {[
-                  { label: '総数', value: summary.total },
-                  { label: '対応中', value: summary.open },
-                  { label: '終了', value: summary.closed },
-                  { label: 'お気に入り', value: summary.favorite },
-                ].map((item, i) => (
-                  <div key={item.label} className="flex items-baseline gap-1">
-                    {i > 0 && <span aria-hidden="true" className="mr-2 text-slate-300">|</span>}
-                    <dt>{item.label}</dt>
-                    <dd className="text-sm font-semibold text-slate-800">{item.value}</dd>
-                  </div>
-                ))}
-              </dl>
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={openImport}
+                className="flex min-h-11 flex-1 items-center justify-center rounded-md bg-slate-800 px-4 text-sm font-medium whitespace-nowrap text-white hover:bg-slate-700 sm:min-h-9 sm:flex-none"
+              >
+                求人URLを登録
+              </button>
+              <button
+                onClick={openCreate}
+                className="flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 text-sm whitespace-nowrap text-slate-600 hover:bg-slate-50 sm:min-h-9"
+              >
+                手入力
+              </button>
             </div>
 
-            <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
-              {/*
-                主CTA(求人URLを登録)と同じ濃色にすると重要度が競合するため、
-                選択中のタブはslateの淡い面と文字の濃さだけで示す。
-              */}
-              <div className="flex gap-1.5 shrink-0">
-                {TYPE_TABS.map(tab => (
-                  <button
-                    key={tab.value}
-                    onClick={() => setTypeFilter(tab.value)}
-                    className={`px-3 py-1.5 rounded-md text-sm ${
-                      typeFilter === tab.value
-                        ? 'bg-slate-200 text-slate-900 font-medium'
-                        : 'text-slate-500 hover:bg-slate-100'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <div className="relative flex-1 min-w-0">
-                <input
-                  type="text"
-                  placeholder="案件名・クライアント・概要・メモを検索"
-                  value={searchInput}
-                  onChange={e => setSearchInput(e.target.value)}
-                  className="w-full border border-slate-300 rounded-md pl-3 pr-9 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                />
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={clearSearch}
-                    aria-label="検索をクリア"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
+            {/*
+              種別の絞り込み。主CTAと色で競合させないため、
+              選択中は淡い面と文字の濃さだけで示す。
+            */}
+            <div className="flex shrink-0 gap-1 rounded-md bg-slate-100 p-0.5">
+              {TYPE_TABS.map(tab => (
+                <button
+                  key={tab.value}
+                  onClick={() => setTypeFilter(tab.value)}
+                  aria-pressed={typeFilter === tab.value}
+                  className={`min-h-10 flex-1 rounded px-3 text-sm sm:min-h-8 sm:flex-none ${
+                    typeFilter === tab.value
+                      ? 'bg-white font-medium text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
-          </div>
 
-          {/* Project List(行として読める密度にするため行間は最小限にする) */}
-          <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold text-slate-700 px-1">
-              案件一覧 <span className="text-slate-400 font-normal">{projects.length}件</span>
-            </h2>
-            {projects.length === 0 && (
-              hasActiveFilter ? (
-                <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-                  <p className="text-sm text-slate-600">条件に一致する案件がありません。</p>
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="mt-3 px-3 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50"
-                  >
-                    条件をクリア
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-                  <p className="text-sm font-medium text-slate-700">まだ案件がありません</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    求人ページのURLを貼り付けると、案件名や報酬を取り込んで登録できます。
-                  </p>
-                  <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setImportOpen(true)}
-                      className="px-4 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-md shadow-sm hover:bg-slate-700"
-                    >
-                      求人URLを登録
-                    </button>
-                    <button
-                      type="button"
-                      onClick={openCreate}
-                      className="px-4 py-2 text-sm text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50"
-                    >
-                      手入力で登録
-                    </button>
-                  </div>
-                </div>
-              )
-            )}
-            {projects.map(p => (
-              <ProjectCard
-                key={p.id}
-                project={p}
-                variant="active"
-                onEdit={openEdit}
-                onDelete={handleDelete}
-                deleting={deletingId === p.id}
+            <div className="relative min-w-0 flex-1">
+              <input
+                type="text"
+                placeholder="案件名・クライアント・概要・メモを検索"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                /* 狭幅は16px。iOS Safariは16px未満の入力欄でフォーカス時に自動拡大するため。 */
+                className="min-h-11 w-full rounded-md border border-slate-300 bg-white pl-3 pr-10 text-base focus:ring-2 focus:ring-slate-400 focus:outline-none sm:min-h-9 sm:text-sm"
               />
-            ))}
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  aria-label="検索をクリア"
+                  className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded text-slate-400 hover:text-slate-600"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* 一覧。1件ごとの箱をやめ、境界線で区切った1つの面にする。 */}
+          <div className="space-y-2">
+            {/*
+              見出し行。件数と内訳をここへ集約する。
+              内訳は「毎回見る情報ではないが、無いと全体像が分からない」ものなので、
+              主CTAと同じ強さでは置かず、見出しの脇に1行で添える。
+            */}
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-0.5">
+              <h2 className="text-sm font-semibold text-slate-700">
+                案件一覧 <span className="font-normal text-slate-400">{displayProjects.length}件</span>
+              </h2>
+              {displayProjects.length > 0 && (
+                <p className="text-xs text-slate-400 tabular-nums">
+                  対応中 {summary.open} ・ 終了 {summary.closed} ・ お気に入り {summary.favorite}
+                </p>
+              )}
+              {demoMode && (
+                <span className="ml-auto flex items-center gap-2">
+                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">デモ表示中</span>
+                  <span className="hidden text-xs text-slate-400 sm:inline">保存されません</span>
+                  <button
+                    type="button"
+                    onClick={endDemo}
+                    className="flex min-h-11 items-center rounded-md px-2 text-xs text-slate-600 underline hover:bg-slate-100 hover:text-slate-800 md:min-h-8"
+                  >
+                    デモを終了
+                  </button>
+                </span>
+              )}
+            </div>
+
+            {/*
+              絞り込んだ結果の0件。まだ登録していない0件とは別物なので、
+              条件を解除できるようフィルタ・検索は残したまま案内だけ出す。
+              (まだ登録していない0件は、この一覧ブロックごとオンボーディングへ差し替わる)
+            */}
+            {!demoMode && projects.length === 0 && hasActiveFilter && (
+              <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+                <p className="text-sm text-slate-600">条件に一致する案件がありません。</p>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-3 min-h-11 rounded-md border border-slate-300 px-4 text-sm text-slate-700 hover:bg-slate-50 md:min-h-9"
+                >
+                  条件をクリア
+                </button>
+              </div>
+            )}
+
+            {/*
+              デモ中は詳細パネル側をvariant="demo"で描く。
+              編集・削除の導線自体が出ないため、
+              架空案件からDBを変える操作へ進む経路が存在しない。
+            */}
+            {displayProjects.length > 0 && (
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <ProjectListHeader />
+                {displayProjects.map(p => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    selected={p.id === selectedId}
+                    onOpen={project => setSelectedId(project.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          </>
+          )}
         </main>
       )}
+
+      {/*
+        詳細。一覧の行を展開するのをやめ、PCは右パネル・スマホは下シートで出す。
+        表示している項目はこれまでの展開部と同じで、新しい情報は足していない。
+      */}
+      <ProjectDetailPanel
+        project={selectedProject}
+        variant={demoMode ? 'demo' : 'active'}
+        onClose={() => setSelectedId(null)}
+        onEdit={project => {
+          setSelectedId(null);
+          openEdit(project);
+        }}
+        onDelete={handleDelete}
+        deleting={selectedProject !== null && deletingId === selectedProject.id}
+      />
 
       <ProjectModal
         open={modalOpen}
