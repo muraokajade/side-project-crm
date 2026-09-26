@@ -220,6 +220,10 @@ describe('AppRoot', () => {
     expect((screen.getByRole('combobox', { name: 'ステータス' }) as HTMLSelectElement).value).toBe('見送り');
     // 編集フォームは開かない。
     expect(screen.queryByText('案件を編集')).not.toBeInTheDocument();
+
+    // 成功は alert ではなく、数秒で消える通知で知らせる。
+    expect(screen.getByRole('status')).toHaveTextContent('ステータスを「見送り」に更新しました');
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument(), { timeout: 4000 });
   });
 
   it('ステータスの保存に失敗したら通知し、一覧・詳細は元のステータスのまま', async () => {
@@ -241,6 +245,7 @@ describe('AppRoot', () => {
     await waitFor(() => expect(alertMock).toHaveBeenCalled());
     await waitFor(() => expect(select).not.toBeDisabled());
     expect(select.value).toBe('気になる');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     const row = screen.getByRole('button', { name: '進める案件 の詳細を開く' });
     expect(within(row).getByText('気になる')).toBeInTheDocument();
     expect(screen.getByText(/対応中 1 ・ 終了 0/)).toBeInTheDocument();

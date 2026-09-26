@@ -278,26 +278,47 @@ describe('ProjectCard スマホの情報階層', () => {
 });
 
 describe('ProjectCard ステータス表示', () => {
-  /** 一覧のステータスは「点 + 文字」。点は案件名の手前に置く。 */
+  /** 一覧のステータスは「点 + 色付き文字」で1つのまとまり。点はステータス名の直前に置く。 */
   const statusDot = (container: HTMLElement) => container.querySelector('span[aria-hidden="true"]');
 
-  it('ステータスは色付きの点で示し、塗りバッジにしない', () => {
+  it('ステータスは点と色付き文字で示し、塗りバッジにしない', () => {
     const { container } = render(<ProjectCard project={makeProject({ status: '内定' })} onOpen={() => {}} />);
 
+    const status = screen.getByText('内定');
     expect(statusDot(container)?.className).toContain('bg-green-500');
-    expect(screen.getByText('内定').className).not.toContain('bg-');
+    expect(status).toContainElement(statusDot(container) as HTMLElement);
+    expect(status).toHaveClass('text-green-700');
+    expect(status.className).not.toContain('bg-');
   });
 
-  it('side_jobのステータスも同じ扱いにする', () => {
-    const { container } = render(<ProjectCard project={makeProject({ status: '契約' })} onOpen={() => {}} />);
-
-    expect(statusDot(container)?.className).toContain('bg-violet-500');
+  it('進捗の意味ごとに色をまとめる(未着手・選考中/進行中・成功・見送り)', () => {
+    const cases: [string, string, string][] = [
+      ['気になる', 'bg-slate-400', 'text-slate-600'],
+      ['書類選考', 'bg-blue-500', 'text-blue-700'],
+      ['最終面接', 'bg-blue-500', 'text-blue-700'],
+      ['契約', 'bg-blue-500', 'text-blue-700'],
+      ['完了', 'bg-green-500', 'text-green-700'],
+      ['見送り', 'bg-slate-300', 'text-slate-400'],
+    ];
+    for (const [status, dot, text] of cases) {
+      const { container, unmount } = render(<ProjectCard project={makeProject({ status })} onOpen={() => {}} />);
+      expect(statusDot(container)).toHaveClass(dot);
+      expect(screen.getByText(status)).toHaveClass(text);
+      unmount();
+    }
   });
 
-  it('未知のステータスでも色で意味を作らず、中立の点で出す', () => {
+  it('未知のステータスでも色で意味を作らず、未着手と同じ中立の見た目で出す', () => {
     const { container } = render(<ProjectCard project={makeProject({ status: '未知の状態' })} onOpen={() => {}} />);
 
-    expect(statusDot(container)?.className).toContain('bg-slate-300');
+    expect(statusDot(container)).toHaveClass('bg-slate-400');
+    expect(screen.getByText('未知の状態')).toHaveClass('text-slate-600');
+  });
+
+  it('案件名の手前には点を置かない(点はステータスの側にだけある)', () => {
+    render(<ProjectCard project={makeProject({ name: 'フロント改修' })} onOpen={() => {}} />);
+
+    expect(screen.getByText('フロント改修').parentElement!.querySelector('span[aria-hidden="true"]')).toBeNull();
   });
 
   it('種別は背景バッジにせず、文字だけで出す', () => {

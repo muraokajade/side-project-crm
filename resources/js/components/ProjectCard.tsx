@@ -1,5 +1,5 @@
 import { Project } from '../types/project';
-import { STATUS_DOT_COLORS, STATUS_DOT_FALLBACK } from '../constants/projectOptions';
+import { statusStyle } from '../constants/projectOptions';
 import { rewardDisplay } from '../utils/rewardDisplay';
 import { resolveMediaForDisplay } from '../utils/mediaFromUrl';
 
@@ -89,6 +89,7 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
   // 一覧の1スロットに収めるため、クライアント名が無い案件は媒体で代替する。
   const company = p.client_name || media;
   const reward = rewardDisplay(p);
+  const status = statusStyle(p.status);
 
   return (
     /*
@@ -109,12 +110,8 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
         selected ? 'bg-slate-100' : 'bg-white'
       }`}
     >
-      {/* 案件名。ステータスの点を頭に置き、名前は必ず1行で切る。 */}
+      {/* 案件名。名前は必ず1行で切る。 */}
       <span className="flex min-w-0 items-center gap-2 max-md:order-1 max-md:basis-0 max-md:grow">
-        <span
-          aria-hidden="true"
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT_COLORS[p.status] ?? STATUS_DOT_FALLBACK}`}
-        />
         {p.is_favorite && (
           <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0 text-amber-400" role="img" aria-label="お気に入り">
             <path d="M10 1.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z" />
@@ -135,7 +132,7 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
         {/* 1段目と2段目の区切り。狭幅だけで使い、高さは段の間隔を兼ねる。 */}
         <span className="max-md:order-3 max-md:h-1 max-md:basis-full md:hidden" />
 
-        <span className="min-w-0 truncate text-slate-500 max-md:order-4 max-md:max-w-[55%] max-md:pl-3.5">{company}</span>
+        <span className="min-w-0 truncate text-slate-500 max-md:order-4 max-md:max-w-[55%]">{company}</span>
 
         <span className="text-slate-600 tabular-nums max-md:order-5 max-md:truncate md:truncate md:text-right">{reward}</span>
 
@@ -153,9 +150,14 @@ export default function ProjectCard({ project: p, selected, onOpen }: ProjectCar
           PCはステータスと種別を同じ列に並べる。
           狭幅は入れ物を消し、ステータスは案件名の右、種別は締切の後ろへ離して置く
           (隣り合うとステータスの一部に見えるため)。
+          ステータスは「点 + 色付き文字」で1つのまとまりにする。色は進捗の意味(4グループ)だけを表す。
+          背景付きの札にはしない(行ごとに塗り面が並ぶと、案件名より目立ってしまうため)。
         */}
         <span className="max-md:contents md:truncate">
-          <span className="text-slate-500 max-md:order-2 max-md:shrink-0 max-md:font-medium max-md:text-slate-600">{p.status}</span>
+          <span className={`inline-flex items-center gap-1.5 font-medium max-md:order-2 max-md:shrink-0 ${status.text}`}>
+            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} />
+            {p.status}
+          </span>
           <span className="ml-1.5 text-slate-400 max-md:order-7 max-md:ml-0">{TYPE_LABELS[p.type]}</span>
         </span>
       </span>

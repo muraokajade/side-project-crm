@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Project, SIDE_JOB_ALLOWED_LABELS } from '../types/project';
-import { STATUS_COLORS, statusOptionsForType } from '../constants/projectOptions';
+import { statusOptionsForType, statusStyle } from '../constants/projectOptions';
 import { rewardDisplay } from '../utils/rewardDisplay';
 import { resolveMediaForDisplay } from '../utils/mediaFromUrl';
 import { employmentTypeDisplay } from '../utils/employmentType';
@@ -114,6 +114,7 @@ export default function ProjectDetailPanel({
   const savingStatus = pendingStatus?.id === p.id ? pendingStatus.status : null;
   const statusSaving = savingStatus !== null;
   const shownStatus = savingStatus ?? p.status;
+  const shownStyle = statusStyle(shownStatus);
   // 定義外の値(旧データ等)が保存されていても、先頭の選択肢に化けて見えないよう選択肢に残す。
   const typeStatuses = statusOptionsForType(p.type);
   const statusOptions = typeStatuses.includes(p.status) ? typeStatuses : [p.status, ...typeStatuses];
@@ -163,22 +164,45 @@ export default function ProjectDetailPanel({
                 ゴミ箱・デモはDBを変えられないので、従来どおり表示だけにする。
               */}
               {canChangeStatus ? (
-                <select
-                  aria-label="ステータス"
-                  value={shownStatus}
-                  onChange={e => changeStatus(e.target.value)}
-                  disabled={statusSaving}
-                  aria-busy={statusSaving}
-                  className={`min-h-11 cursor-pointer rounded border-0 px-2 text-base disabled:cursor-wait disabled:opacity-60 md:min-h-8 md:text-xs ${
-                    STATUS_COLORS[shownStatus] || 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {statusOptions.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                /*
+                  見た目は「点 + 状態名 + ▼」の札。ブラウザ標準の矢印は消し(appearance-none)、
+                  点と矢印は select の上に重ねて描く(押しても select が反応するよう pointer-events-none)。
+                */
+                <span className={`relative inline-flex items-center ${shownStyle.text}`}>
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute left-3 h-2 w-2 rounded-full ${shownStyle.dot}`}
+                  />
+                  <select
+                    aria-label="ステータス"
+                    value={shownStatus}
+                    onChange={e => changeStatus(e.target.value)}
+                    disabled={statusSaving}
+                    aria-busy={statusSaving}
+                    className={`min-h-11 cursor-pointer appearance-none rounded-full border pr-8 pl-7 text-base font-medium hover:brightness-[0.97] focus:ring-2 focus:ring-slate-300 focus:outline-none disabled:cursor-wait disabled:opacity-60 md:min-h-8 md:text-sm ${shownStyle.pill}`}
+                  >
+                    {statusOptions.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 opacity-60"
+                  >
+                    <path d="M6 8l4 4 4-4" />
+                  </svg>
+                </span>
               ) : (
-                <span className={`rounded px-2 py-0.5 text-xs ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-700'}`}>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusStyle(p.status).pill}`}
+                >
+                  <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${statusStyle(p.status).dot}`} />
                   {p.status}
                 </span>
               )}

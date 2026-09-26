@@ -22,6 +22,7 @@ const TYPE_TABS: { value: TypeFilter; label: string }[] = [
 ];
 
 const SEARCH_DEBOUNCE_MS = 400;
+const STATUS_NOTICE_MS = 3000;
 
 function AppRoot() {
   // 認証状態が確定するまでは案件データを一切取得・描画しない。
@@ -42,6 +43,8 @@ function AppRoot() {
   const [modalErrors, setModalErrors] = useState<Record<string, string[]> | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  /** ステータス更新成功の通知。keyは同じ文言が続いても表示し直すための通し番号。 */
+  const [statusNotice, setStatusNotice] = useState<{ key: number; text: string } | null>(null);
 
   /**
    * デモ表示。初めて見る人にJobHuntの使い方を伝えるための、架空案件の表示モード。
@@ -116,6 +119,13 @@ function AppRoot() {
     const handle = setTimeout(() => setAppliedSearch(searchInput), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
   }, [searchInput]);
+
+  // 更新通知は数秒で消す。続けて更新したときは、新しい通知から数え直す。
+  useEffect(() => {
+    if (!statusNotice) return;
+    const handle = setTimeout(() => setStatusNotice(null), STATUS_NOTICE_MS);
+    return () => clearTimeout(handle);
+  }, [statusNotice]);
 
   const clearSearch = () => {
     setSearchInput('');
@@ -282,6 +292,7 @@ function AppRoot() {
       const res = await updateProject(project.id, { status });
       if (res.status === 200) {
         await fetchProjects();
+        setStatusNotice(prev => ({ key: (prev?.key ?? 0) + 1, text: `ステータスを「${status}」に更新しました` }));
       } else {
         window.alert('ステータスの変更に失敗しました。もう一度お試しください。');
       }
@@ -641,6 +652,26 @@ function AppRoot() {
         onPreviewReady={handlePreviewReady}
         onManualEntry={handleManualEntry}
       />
+
+      {/*
+        ステータス更新の完了通知。数秒で自動的に消える。
+        操作の邪魔をしないよう、押せない(pointer-events-none)小さな帯としてヘッダーの下に出す。
+        スマホの詳細シートは下から出るので、上に出せば重ならない。
+      */}
+      {statusNotice && (
+        <div
+          key={statusNotice.key}
+          role="status"
+          className="pointer-events-none fixed inset-x-0 top-16 z-50 flex justify-center px-4"
+        >
+          <p className="flex max-w-full items-center gap-2 rounded-full bg-slate-800 px-4 py-2 text-sm text-white shadow-lg">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4 shrink-0 text-green-400">
+              <path d="M4.5 10.5l3.5 3.5 7.5-8" />
+            </svg>
+            <span className="truncate">{statusNotice.text}</span>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

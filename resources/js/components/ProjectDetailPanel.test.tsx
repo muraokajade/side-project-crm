@@ -436,6 +436,32 @@ describe('ProjectDetailPanel ステータスの直接変更', () => {
 
   it('狭幅では44px・16px(iOSの自動拡大を防ぐ)を確保する', () => {
     render(<ProjectDetailPanel project={makeProject()} variant="active" onClose={() => {}} onStatusChange={async () => {}} />);
-    expect(statusSelect()).toHaveClass('min-h-11', 'text-base', 'md:text-xs');
+    expect(statusSelect()).toHaveClass('min-h-11', 'text-base', 'md:text-sm');
+  });
+
+  it('現在の状態は、進捗の意味に応じた色の札(点・背景・枠)で出し、標準の矢印は使わない', () => {
+    render(
+      <ProjectDetailPanel project={makeProject({ status: '応募済み' })} variant="active" onClose={() => {}} onStatusChange={async () => {}} />
+    );
+
+    expect(statusSelect()).toHaveClass('appearance-none', 'rounded-full', 'border', 'border-blue-200', 'bg-blue-50', 'text-blue-700');
+    const dot = statusSelect().parentElement!.querySelector('span[aria-hidden="true"]');
+    expect(dot).toHaveClass('bg-blue-500');
+  });
+
+  it('選び直すと、保存中も札の色が選んだ状態のものに変わる', () => {
+    render(
+      <ProjectDetailPanel
+        project={makeProject({ status: '応募済み' })}
+        variant="active"
+        onClose={() => {}}
+        onStatusChange={() => new Promise<void>(() => {})}
+      />
+    );
+
+    fireEvent.change(statusSelect(), { target: { value: '見送り' } });
+
+    expect(statusSelect()).toHaveClass('text-slate-400');
+    expect(statusSelect()).not.toHaveClass('bg-blue-50');
   });
 });
